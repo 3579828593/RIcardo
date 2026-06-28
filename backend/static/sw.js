@@ -1,14 +1,14 @@
 // ============================================================
 // 期末冲刺刷题系统 Service Worker
-// 版本: v3
+// 版本: v4
 // 策略:
 //   - 首页 / 与核心静态资源: 预缓存 (precache)
-//   - 静态资源 (/static/...): CacheFirst
+//   - 静态资源 (/static/...): StaleWhileRevalidate (先返回缓存,后台更新)
 //   - API 请求 (/api/...): NetworkFirst (回退缓存,支持离线读)
 //   - 其他导航请求: NetworkFirst, 离线回退到缓存的首页
 // ============================================================
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const STATIC_CACHE = `quiz-static-${CACHE_VERSION}`;
 const API_CACHE = `quiz-api-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `quiz-runtime-${CACHE_VERSION}`;
@@ -41,6 +41,13 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+// ---------- 消息: 处理 SKIP_WAITING ----------
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 // ---------- 激活: 清理旧版本缓存 ----------
 self.addEventListener('activate', (event) => {
   const validCaches = new Set([STATIC_CACHE, API_CACHE, RUNTIME_CACHE]);
@@ -65,6 +72,20 @@ function isApiRequest(url) {
 
 function isStaticAsset(url) {
   return url.pathname.startsWith('/static/');
+}
+
+// StaleWhileRevalidate: 先返回缓存(快),同时后台拉取最新版本更新缓存
+// 这样用户永远能快速加载,同时下次访问就是最新版本
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  const fetchPromise = fetch(request).then((response) => {
+    if (response && response.status === 200) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  }).catch(() => cached);
+  return cached || fetchPromise;
 }
 
 // CacheFirst: 优先缓存,缓存未命中再回网络(并把结果写入缓存)
@@ -120,9 +141,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2) 静态资源 -> CacheFirst
+  // 2) 静态资源 -> StaleWhileRevalidate (先返回缓存,后台更新)
   if (isStaticAsset(url)) {
-    event.respondWith(cacheFirst(req, STATIC_CACHE));
+    event.respondWith(staleWhileRevalidate(req, STATIC_CACHE));
     return;
   }
 
