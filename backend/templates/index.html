@@ -330,6 +330,20 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
   transition: color 0.16s;
 }
 
+/* ========== 内联进度条（专注模式顶部） ========== */
+.progress-inline {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--muted-foreground);
+}
+.progress-inline-text { white-space: nowrap; }
+.progress-inline-bar {
+  width: 80px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+}
+.progress-inline-fill {
+  height: 100%; background: var(--accent); border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
 /* ========== 题目卡片 ========== */
 .question-card {
   background: var(--card); border: 3px solid var(--border);
@@ -339,6 +353,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
   animation: card-fade-in 0.25s steps(3, end);
 }
 .question-card:hover { box-shadow: var(--shadow-md); }
+.question-card.answered { border-left: 3px solid var(--success); }
 @keyframes card-fade-in {
   0% { opacity: 0; transform: translateY(12px); }
   50% { opacity: 1; transform: translateY(4px); }
@@ -827,14 +842,19 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
 
       <!-- 筛选栏 - 标签式 -->
       <div class="filter-bar">
-        <!-- 模式切换 -->
+        <!-- 进度条 + 模式切换 -->
         <div class="filter-section">
-          <div class="chip-row">
-            <button class="chip" :class="{active: !singleMode && mode==='normal'}" @click="exitSingleMode(); switchMode('normal')">列表刷题</button>
-            <button class="chip" :class="{active: singleMode}" @click="enterSingleMode">专注模式</button>
-            <button class="chip" :class="{active: !singleMode && mode==='random'}" @click="exitSingleMode(); switchMode('random')">随机刷题</button>
-            <button class="chip outline" @click="continueLastPractice" v-if="Object.keys(results).length > 0">
-              继续练习
+          <div class="chip-row" style="flex-wrap:wrap; gap:6px; align-items:center;">
+            <span class="progress-inline" v-if="singleMode && allQuestions.length > 0">
+              <span class="progress-inline-text">已做 {{ doneCount }} / {{ totalCount }}</span>
+              <div class="progress-inline-bar">
+                <div class="progress-inline-fill" :style="{width: progressPercent + '%'}"></div>
+              </div>
+            </span>
+            <button class="chip" :class="{active: singleMode}" @click="enterSingleMode">专注刷题</button>
+            <button class="chip" :class="{active: !singleMode && mode==='normal'}" @click="switchMode('normal')">列表浏览</button>
+            <button class="chip outline" @click="continueLastPractice" v-if="doneCount > 0 && doneCount < totalCount">
+              继续做题
             </button>
           </div>
         </div>
@@ -886,9 +906,9 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
       <!-- 单题模式 -->
       <div v-if="singleMode && currentQuestion" class="single-question-view">
         <div class="single-progress">
-          <span>{{ currentIndex + 1 }} / {{ allQuestions.length }}</span>
+          <span>第 {{ cursor + 1 }} 题 · 已做 {{ doneCount }} / {{ totalCount }}</span>
           <div class="single-progress-bar">
-            <div class="single-progress-fill" :style="{width: ((currentIndex + 1) / allQuestions.length * 100) + '%'}"></div>
+            <div class="single-progress-fill" :style="{width: progressPercent + '%'}"></div>
           </div>
         </div>
 
@@ -1022,9 +1042,9 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
 
         <!-- 单题模式导航 -->
         <div class="single-nav" v-if="!reviewMode">
-          <button class="btn outline" @click="prevQuestion" :disabled="currentIndex === 0">上一题</button>
-          <span class="single-nav-info">{{ currentIndex + 1 }} / {{ allQuestions.length }}</span>
-          <button class="btn" @click="nextQuestion" :disabled="currentIndex >= allQuestions.length - 1">下一题</button>
+          <button class="btn outline" @click="prevQuestion" :disabled="cursor === 0">上一题</button>
+          <span class="single-nav-info">第 {{ cursor + 1 }} / {{ totalCount }} 题</span>
+          <button class="btn" @click="nextQuestion">下一题 →</button>
         </div>
       </div>
 
@@ -1065,7 +1085,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         <div class="empty-state-desc">试试调整筛选条件</div>
       </div>
 
-      <div v-for="q in questions" :key="q.id" class="question-card">
+      <div v-for="q in questions" :key="q.id" class="question-card" :class="{ 'answered': results[q.id] !== undefined }">
         <div class="question-header">
           <div class="question-meta">
             <span class="question-type">{{ typeLabel(q.type) }}</span>
@@ -1184,7 +1204,8 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
     </div>
 
     <!-- ==================== 统计页 ==================== -->
-    <div v-show="activeTab==='stats'">
+    <keep-alive>
+    <div v-if="activeTab==='stats'">
       <div class="page-title">学习统计</div>
 
       <!-- 数据卡片 -->
@@ -1252,9 +1273,11 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         <button class="btn small outline" @click="resetAllStats" style="color:var(--destructive);">清除全部记录</button>
       </div>
     </div>
+    </keep-alive>
 
     <!-- ==================== 错题页 ==================== -->
-    <div v-show="activeTab==='mistakes'">
+    <keep-alive>
+    <div v-if="activeTab==='mistakes'">
       <div class="page-title">错题本</div>
 
       <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;" v-if="mistakes.length > 0">
@@ -1262,7 +1285,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         <button class="btn outline" @click="startReview">Anki 复习</button>
       </div>
 
-      <div v-if="mistakes.length === 0 && !loading" class="empty-state">
+      <div v-if="mistakes.length === 0 && !isLoading('mistakes')" class="empty-state">
         <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
           <circle cx="60" cy="60" r="40" stroke="currentColor" stroke-width="2" opacity="0.3"/>
           <line x1="45" y1="45" x2="75" y2="75" stroke="currentColor" stroke-width="2" opacity="0.3"/>
@@ -1302,12 +1325,14 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         </button>
       </div>
     </div>
+    </keep-alive>
 
     <!-- ==================== 收藏页 ==================== -->
-    <div v-show="activeTab==='favorites'">
+    <keep-alive>
+    <div v-if="activeTab==='favorites'">
       <div class="page-title">我的收藏</div>
 
-      <div v-if="favorites.length === 0 && !loading" class="empty-state">
+      <div v-if="favorites.length === 0 && !isLoading('favorites')" class="empty-state">
         <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M60 100L25 70a25 25 0 0 1 35-35l0 0a25 25 0 0 1 35 35L60 100z" stroke="currentColor" stroke-width="2" opacity="0.3" fill="currentColor" fill-opacity="0.05"/>
           <line x1="48" y1="50" x2="72" y2="50" stroke="currentColor" stroke-width="2" opacity="0.2"/>
@@ -1345,6 +1370,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         </button>
       </div>
     </div>
+    </keep-alive>
 
   </div><!-- /main-content -->
 

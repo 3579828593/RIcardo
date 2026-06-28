@@ -27,6 +27,8 @@ createApp({
     const favIds = ref(new Set());
     const loading = ref(false);
     const loadingDone = ref(false);
+    // R3: 按 Tab 的加载标记，避免跨 Tab 串台（quiz 加载时切到收藏，收藏空状态被隐藏）
+    const tabLoading = reactive({ quiz: false, stats: false, mistakes: false, favorites: false });
     const loadingKey = ref(0);
     const toasts = ref([]);
     const submitLock = ref(false);
@@ -46,10 +48,14 @@ createApp({
     const selectedTypes = ref([]);
 
     // 单题模式状态
-    const singleMode = ref(false);
-    const currentIndex = ref(0);
+    const singleMode = ref(true); // 单题流为默认
+    const cursor = ref(0);        // 全局游标（当前在题目列表中的位置）
     const allQuestions = ref([]);
     const courseCounts = ref({});
+    // 已做题号集合（持久化到 localStorage）
+    const doneSet = ref(new Set());
+    // 兼容 index.html 仍引用 currentIndex（后续 HTML 改为 cursor 后可移除）
+    const currentIndex = computed(() => cursor.value);
 
     // Anki 复习模式
     const reviewMode = ref(false);
@@ -85,7 +91,20 @@ createApp({
           mode: mode.value,
           activeTab: activeTab.value,
           singleMode: singleMode.value,
-          currentIndex: currentIndex.value,
+          cursor: cursor.value,
+          doneSet: Array.from(doneSet.value),
+          mistakePage: mistakePage.value,
+          favPage: favPage.value,
+          reviewMode: reviewMode.value,
+          reviewIndex: reviewIndex.value,
+          showMoreFilter: showMoreFilter.value,
+          scrollMemory: { ...scrollMemory },
+          // R1: 持久化单题会话题目（精简字段，限500题防 localStorage 爆）
+          allQuestions: singleMode.value ? allQuestions.value.slice(0, 500).map(q => ({
+            id: q.id, stem: q.stem, type: q.type, options: q.options,
+            answer: q.answer, explanation: q.explanation, knowledge: q.knowledge,
+            chapter: q.chapter, course: q.course
+          })) : [],
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       } catch(e) { /* localStorage 满了就忽略 */ }
@@ -105,20 +124,34 @@ createApp({
         if (state.mode) mode.value = state.mode;
         if (state.activeTab) activeTab.value = state.activeTab;
         if (state.singleMode) singleMode.value = state.singleMode;
-        if (state.currentIndex) currentIndex.value = state.currentIndex;
+        if (state.cursor !== undefined) cursor.value = state.cursor;
+        else if (state.currentIndex !== undefined) cursor.value = state.currentIndex; // 兼容旧持久化数据
+        if (state.doneSet) doneSet.value = new Set(state.doneSet);
+        if (state.mistakePage) mistakePage.value = state.mistakePage;
+        if (state.favPage) favPage.value = state.favPage;
+        if (state.reviewMode !== undefined) reviewMode.value = state.reviewMode;
+        if (state.reviewIndex !== undefined) reviewIndex.value = state.reviewIndex;
+        if (state.showMoreFilter !== undefined) showMoreFilter.value = state.showMoreFilter;
+        if (state.scrollMemory) Object.assign(scrollMemory, state.scrollMemory);
+        // R1: 恢复单题会话题目
+        if (state.allQuestions && Array.isArray(state.allQuestions) && state.allQuestions.length) {
+          allQuestions.value = state.allQuestions;
+        }
       } catch(e) { /* 解析失败忽略 */ }
     }
     // 用 watch 自动保存
     watch([userAnswers, results, showExplanations], saveState, { deep: true });
-    watch([page, mode, activeTab, selectedTypes, selectedCourse, () => filter.chapter, () => filter.keyword, singleMode, currentIndex], saveState, { deep: true });
+    watch([page, mode, activeTab, selectedTypes, selectedCourse, () => filter.chapter, () => filter.keyword, singleMode, cursor, doneSet, mistakePage, favPage, reviewMode, reviewIndex, showMoreFilter], saveState, { deep: true });
 
     // ========== 计算属性 ==========
     const themeLabel = computed(() => theme.value === 'dark' ? 'LIGHT' : 'DARK');
 
     const progressPercent = computed(() => {
-      if (!stats.value.total_questions) return 0;
-      return Math.min(100, ((stats.value.answered_questions || 0) / stats.value.total_questions) * 100);
+      if (!allQuestions.value.length) return 0;
+      return Math.round((doneSet.value.size / allQuestions.value.length) * 100);
     });
+    const doneCount = computed(() => doneSet.value.size);
+    const totalCount = computed(() => allQuestions.value.length);
 
     const maxTypeCount = computed(() => {
       if (!stats.value.type_distribution) return 1;
@@ -135,10 +168,12 @@ createApp({
     const mistakeVisiblePages = computed(() => buildVisiblePages(mistakePage.value, mistakeTotalPages.value));
     const favVisiblePages = computed(() => buildVisiblePages(favPage.value, favTotalPages.value));
 
-    // 单题模式：当前题目
+    // 单题模式：当前题目（基于全局游标 cursor）
     const currentQuestion = computed(() => {
-      if (!singleMode.value) return null;
-      return allQuestions.value[currentIndex.value] || null;
+      if (singleMode.value && allQuestions.value.length > 0) {
+        return allQuestions.value[cursor.value] || null;
+      }
+      return null;
     });
 
     // 加载更多：是否还有更多
@@ -240,18 +275,22 @@ createApp({
       return fetch(url, options);
     }
 
-    // 带加载状态的 fetch 封装
+    // 带加载状态的 fetch 封装（R3: 额外标记当前 Tab 的加载态）
     const fetchWithLoading = async (url, options = {}) => {
+      const tab = activeTab.value || 'quiz';
       startLoading();
+      tabLoading[tab] = true;
       try {
         options.headers = options.headers || {};
         options.headers['X-Session-Id'] = sessionId;
         const res = await fetch(url, options);
         const data = await res.json();
         finishLoading();
+        tabLoading[tab] = false;
         return data;
       } catch (err) {
         finishLoading();
+        tabLoading[tab] = false;
         showToast('网络请求失败，请稍后重试', 'error');
         throw err;
       }
@@ -265,21 +304,36 @@ createApp({
     };
 
     // ========== Tab 切换 ==========
+    // R2: 各 Tab 独立滚动位置记忆，切走保存、切回恢复
+    const scrollMemory = {};
+    const saveScroll = () => { scrollMemory[activeTab.value] = window.scrollY || 0; };
+
     const switchTab = (tab) => {
       if (activeTab.value === tab && tab !== 'quiz') return; // 避免重复刷新
+      saveScroll();                       // 离开当前 Tab 前先存位置
       haptic.light();
       activeTab.value = tab;
-      if (tab === 'quiz') return; // 刷题页不自动刷新
+      if (tab === 'quiz') {
+        nextTick(() => window.scrollTo({ top: scrollMemory['quiz'] || 0 }));
+        return;
+      }
       if (tab === 'stats') loadStats();
-      if (tab === 'mistakes') { mistakePage.value = 1; loadMistakes(1); }
-      if (tab === 'favorites') { favPage.value = 1; loadFavorites(1); }
-      // 不再强制滚动到顶部
+      if (tab === 'mistakes') { loadMistakes(mistakePage.value); }
+      if (tab === 'favorites') { loadFavorites(favPage.value); }
+      nextTick(() => window.scrollTo({ top: scrollMemory[tab] || 0 }));
     };
 
     // ========== 筛选相关 ==========
     const onFilterChange = () => {
       if (singleMode.value) {
-        loadAllForSingleMode();
+        loadAllForSingleMode().then(() => {
+          // 筛选改变后重置游标到第一个未答题（doneSet 保留，已做的题仍标记为已做）
+          let idx = 0;
+          while (idx < allQuestions.value.length && doneSet.value.has(allQuestions.value[idx].id)) {
+            idx++;
+          }
+          cursor.value = idx < allQuestions.value.length ? idx : 0;
+        });
       } else if (mode.value === 'normal') {
         loadQuestions(1);
       } else {
@@ -288,7 +342,13 @@ createApp({
     };
 
     const switchMode = (newMode) => {
-      if (mode.value === newMode) return;
+      // R4-A: 统一加载入口，退出单题模式不再在模板里另调一次
+      if (singleMode.value) singleMode.value = false;
+      if (mode.value === newMode && newMode === 'normal') {
+        // 已在 normal 且非单题：刷新列表
+        loadQuestions(1);
+        return;
+      }
       mode.value = newMode;
       if (newMode === 'normal') {
         loadQuestions(1);
@@ -379,31 +439,41 @@ createApp({
     // ========== 单题模式 ==========
     const enterSingleMode = () => {
       singleMode.value = true;
-      currentIndex.value = 0;
+      cursor.value = 0;
       loadAllForSingleMode();
     };
 
     const exitSingleMode = () => {
+      // R4-A: 仅切标志，加载责任统一交给 switchMode（避免双加载）
       singleMode.value = false;
-      loadQuestions(1);
     };
 
     const nextQuestion = () => {
-      if (currentIndex.value < allQuestions.value.length - 1) {
-        currentIndex.value++;
+      let next = cursor.value + 1;
+      // 跳过已做的题
+      while (next < allQuestions.value.length && doneSet.value.has(allQuestions.value[next].id)) {
+        next++;
+      }
+      if (next < allQuestions.value.length) {
+        cursor.value = next;
       } else {
-        showToast('已经是最后一题了', 'info');
+        // 检查是否全部做完
+        const allDone = allQuestions.value.every(q => doneSet.value.has(q.id));
+        if (allDone) {
+          showToast('已完成全部题目！', 'success');
+        }
       }
     };
 
     const prevQuestion = () => {
-      if (currentIndex.value > 0) {
-        currentIndex.value--;
+      if (cursor.value > 0) {
+        cursor.value--;
       }
     };
 
     const loadAllForSingleMode = async () => {
       try {
+        const savedIndex = cursor.value;
         const params = new URLSearchParams({ page: 1, page_size: 500 });
         if (selectedCourse.value) params.set('course', selectedCourse.value);
         if (selectedTypes.value.length > 0) params.set('type', selectedTypes.value.join(','));
@@ -413,7 +483,9 @@ createApp({
         const data = await res.json();
         allQuestions.value = data.items || [];
         prepareQuestionState(allQuestions.value);
-        currentIndex.value = 0;
+        // 恢复之前保存的游标，不超出范围
+        cursor.value = Math.min(savedIndex, allQuestions.value.length - 1);
+        if (cursor.value < 0) cursor.value = 0;
       } catch(e) {
         showToast('加载题目失败', 'error');
       }
@@ -515,6 +587,7 @@ createApp({
         });
         const data = await res.json();
         results[q.id] = data;
+        doneSet.value.add(q.id);
         if (data.correct) {
           streak.value++;
           haptic.success();
@@ -565,6 +638,8 @@ createApp({
       Object.keys(userAnswers).forEach(k => delete userAnswers[k]);
       Object.keys(results).forEach(k => delete results[k]);
       Object.keys(showExplanations).forEach(k => delete showExplanations[k]);
+      doneSet.value = new Set();
+      cursor.value = 0;
       localStorage.removeItem(STORAGE_KEY);
       page.value = 1;
       loadQuestions(1);
@@ -573,30 +648,29 @@ createApp({
 
     // ========== 继续上次练习 ==========
     const continueLastPractice = () => {
-      // 从 localStorage 恢复上次的页码和位置
+      // 跳到第一个未答题（不再恢复"第X页"）
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) {
           showToast('没有之前的练习记录', 'info');
           return;
         }
-        const state = JSON.parse(raw);
-        if (state.singleMode && state.currentIndex !== undefined) {
-          // 单题模式恢复
-          singleMode.value = true;
-          loadAllForSingleMode().then(() => {
-            currentIndex.value = Math.min(state.currentIndex, allQuestions.value.length - 1);
-            showToast(`继续第 ${currentIndex.value + 1} 题`, 'info');
-          });
-        } else if (state.page) {
-          // 列表模式恢复
-          singleMode.value = false;
-          loadQuestions(state.page).then(() => {
-            showToast(`继续第 ${state.page} 页`, 'info');
-          });
-        } else {
-          showToast('没有未完成的练习', 'info');
-        }
+        singleMode.value = true;
+        loadAllForSingleMode().then(() => {
+          // 从 cursor=0 开始找第一个不在 doneSet 中的题目
+          let idx = 0;
+          while (idx < allQuestions.value.length && doneSet.value.has(allQuestions.value[idx].id)) {
+            idx++;
+          }
+          if (idx < allQuestions.value.length) {
+            cursor.value = idx;
+            showToast(`继续第 ${idx + 1} 题`, 'info');
+          } else {
+            // 全部做完
+            cursor.value = Math.max(0, allQuestions.value.length - 1);
+            showToast('已完成全部题目！', 'success');
+          }
+        });
       } catch(e) {
         showToast('恢复失败', 'error');
       }
@@ -618,6 +692,8 @@ createApp({
           // 同时清除本地记录
           Object.keys(userAnswers).forEach(k => delete userAnswers[k]);
           Object.keys(results).forEach(k => delete results[k]);
+          doneSet.value = new Set();
+          cursor.value = 0;
           localStorage.removeItem(STORAGE_KEY);
           loadStats();
           loadQuestions(1);
@@ -650,6 +726,9 @@ createApp({
           showToast('暂无错题', 'info');
           return;
         }
+        // R4-C: 显式设 normal 模式，确保"加载更多"按钮与模式高亮正确
+        mode.value = 'normal';
+        singleMode.value = false;
         questions.value = data.items;
         prepareQuestionState(questions.value);
         totalPages.value = 1;
@@ -676,7 +755,7 @@ createApp({
         reviewMode.value = true;
         singleMode.value = true;
         allQuestions.value = data.items;
-        currentIndex.value = 0;
+        cursor.value = 0;
         prepareQuestionState(allQuestions.value);
         activeTab.value = 'quiz';
         showToast(`开始复习 ${data.items.length} 道错题`, 'info');
@@ -716,7 +795,7 @@ createApp({
           reviewIndex.value = 0;
         }
       } else {
-        currentIndex.value = reviewIndex.value;
+        cursor.value = reviewIndex.value;
       }
     };
 
@@ -804,13 +883,9 @@ createApp({
           totalPages.value = 1;
           page.value = 1;
 
-          // 设置筛选为该题所属课程和题型
-          selectedCourse.value = data.course || '';
-          selectedTypes.value = data.type ? [data.type] : [];
-          filter.chapter = '';
-          filter.keyword = '';
-          showMoreFilter.value = false;
+          // R4-B: 仅重置页码，保留所有筛选条件
           mode.value = 'normal';
+          singleMode.value = false;
 
           // 切换到刷题页
           activeTab.value = 'quiz';
@@ -890,13 +965,19 @@ createApp({
       document.documentElement.setAttribute('data-theme', theme.value);
       window.addEventListener('keydown', handleKeydown);
       loadState(); // 恢复之前的状态
+      // 单题流为默认：allQuestions 为空时自动加载单题模式题目
+      if (allQuestions.value.length === 0) {
+        loadAllForSingleMode();
+      } else if (!singleMode.value) {
+        // 已退出单题流（列表模式）才加载列表
+        loadQuestions(page.value);
+      }
       // 并行加载首屏数据（不互相依赖的请求同时发出）
       loadChapters();
       loadCourseCounts();
-      loadQuestions(page.value);
       loadStats();
-      loadMistakes(1);
-      loadFavorites(1);
+      loadMistakes(mistakePage.value);
+      loadFavorites(favPage.value);
       // 监听系统主题变化
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       mediaQuery.addEventListener('change', (e) => {
@@ -914,12 +995,16 @@ createApp({
       page, totalPages, mode,
       userAnswers, results, showExplanations, favIds,
       loading, loadingDone, loadingKey, toasts, showMoreFilter,
+      // R3: 按 Tab 加载标记
+      tabLoading, isLoading: (tab) => tabLoading[tab] || false,
       mistakePage, mistakeTotalPages, favPage, favTotalPages,
       filter, chapters,
       // 单题模式 & Chip 状态
-      singleMode, currentIndex, allQuestions, courseCounts,
+      singleMode, cursor, currentIndex, allQuestions, courseCounts,
       selectedTypes, selectedCourse,
       currentQuestion, hasMore,
+      // 刷题进度（基于 doneSet）
+      doneSet, doneCount, totalCount,
       reviewMode, reviewQueue, reviewIndex, reviewQuestion,
       streak, showCombo,
 
