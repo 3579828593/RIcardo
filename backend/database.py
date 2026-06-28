@@ -8,6 +8,19 @@ from datetime import datetime
 from pathlib import Path
 from contextlib import contextmanager
 import threading
+import re as _re
+
+
+def clean_stem(stem):
+    """清理题干中的答案标注"""
+    if not stem:
+        return stem
+    # 移除括号中的答案标注，如"（答案）" "（对）" "（A）"等
+    # 匹配全角和半角括号
+    stem = _re.sub(r'[（(]\s*(?:答案|答|对|错|[A-Da-d])\s*[）)]', '（　）', stem, flags=_re.IGNORECASE)
+    # 移除题干末尾的答案标记，如"答案：XXX"
+    stem = _re.sub(r'答案?\s*[:：]\s*\S+', '', stem, flags=_re.IGNORECASE)
+    return stem.strip()
 
 
 class QuizDatabase:
@@ -193,7 +206,9 @@ class QuizDatabase:
 
         items = []
         for r in rows:
-            items.append(self._row_to_dict(r))
+            item = self._row_to_dict(r)
+            item['stem'] = clean_stem(item.get('stem', ''))
+            items.append(item)
         return {"items": items, "page": page, "page_size": page_size, "total": total}
 
     def get_question(self, qid: int) -> dict:
@@ -246,7 +261,10 @@ class QuizDatabase:
                 f"SELECT * FROM questions WHERE {clause} ORDER BY RANDOM() LIMIT ?",
                 params + [limit],
             ).fetchall()
-        return [self._row_to_dict(r) for r in rows]
+        results = [self._row_to_dict(r) for r in rows]
+        for q in results:
+            q['stem'] = clean_stem(q.get('stem', ''))
+        return results
 
     def record_answer(self, question_id: int, user_answer, correct: bool, elapsed: int = 0):
         with self.connection() as conn:
@@ -327,6 +345,13 @@ class QuizDatabase:
         with self.connection() as conn:
             cur = conn.execute("DELETE FROM favorites WHERE question_id = ?", (question_id,))
             return cur.rowcount > 0
+
+    def reset_progress(self):
+        """清除所有答题记录（含统计与错题）"""
+        with self.connection() as conn:
+            conn.execute("DELETE FROM answer_records")
+            conn.execute("DELETE FROM mistakes")
+            conn.commit()
 
     def delete_question(self, qid: int):
         with self.connection() as conn:

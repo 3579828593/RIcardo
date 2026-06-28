@@ -427,6 +427,15 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
   padding-top: 6px; border-top: 1px dashed var(--border);
   transition: color 0.16s, border-color 0.16s;
 }
+.correct-answer-box {
+  background: rgba(22, 163, 74, 0.1);
+  border: 1px solid rgba(22, 163, 74, 0.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.correct-answer-label { font-weight: 600; color: var(--success); }
+.correct-answer-text { color: var(--success); font-weight: 500; }
 
 /* ========== 统计页 (21th metric card) ========== */
 .stats-grid {
@@ -666,6 +675,21 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
 }
 .single-nav-info { font-size: 14px; color: var(--muted-foreground); }
 
+/* Anki 复习评分按钮 */
+.review-rating {
+  display: flex; gap: 8px; margin-top: 16px;
+}
+.review-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 12px 8px; font-size: 14px; font-weight: 500;
+  border-radius: 12px;
+}
+.review-btn.again { background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.3); color: var(--error); }
+.review-btn.fuzzy { background: rgba(217,119,6,0.1); border: 1px solid rgba(217,119,6,0.3); color: var(--warning); }
+.review-btn.mastered { background: rgba(22,163,74,0.1); border: 1px solid rgba(22,163,74,0.3); color: var(--success); }
+.review-icon { font-size: 20px; }
+.review-info { text-align: center; margin-top: 8px; font-size: 13px; color: var(--muted-foreground); }
+
 /* ========== 加载更多样式 ========== */
 .load-more-area { text-align: center; padding: 20px 0; }
 .load-more-btn { min-width: 200px; }
@@ -721,6 +745,9 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
             <button class="chip" :class="{active: !singleMode && mode==='normal'}" @click="exitSingleMode(); switchMode('normal')">列表刷题</button>
             <button class="chip" :class="{active: singleMode}" @click="enterSingleMode">专注模式</button>
             <button class="chip" :class="{active: !singleMode && mode==='random'}" @click="exitSingleMode(); switchMode('random')">随机刷题</button>
+            <button class="chip outline" @click="continueLastPractice" v-if="Object.keys(results).length > 0">
+              继续练习
+            </button>
           </div>
         </div>
 
@@ -876,13 +903,37 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
           <!-- 解析区 -->
           <div v-if="showExplanations[currentQuestion.id] || (results[currentQuestion.id] && !results[currentQuestion.id].correct)" class="explanation">
             <div class="explanation-title">解析</div>
+            <div class="correct-answer-box" v-if="currentQuestion.answer">
+              <span class="correct-answer-label">正确答案：</span>
+              <span class="correct-answer-text">{{ formatAnswer(currentQuestion.answer) }}</span>
+            </div>
             <div>{{ currentQuestion.explanation || '暂无解析' }}</div>
             <div v-if="currentQuestion.knowledge" class="explanation-knowledge">知识点：{{ currentQuestion.knowledge }}</div>
           </div>
         </div>
 
+        <!-- Anki 复习评分 -->
+        <div v-if="reviewMode" class="review-rating">
+          <button class="btn review-btn again" @click="rateReview('again')">
+            <span class="review-icon">↻</span>
+            <span>再来</span>
+          </button>
+          <button class="btn review-btn fuzzy" @click="rateReview('fuzzy')">
+            <span class="review-icon">?</span>
+            <span>模糊</span>
+          </button>
+          <button class="btn review-btn mastered" @click="rateReview('mastered')">
+            <span class="review-icon">✓</span>
+            <span>掌握</span>
+          </button>
+        </div>
+        <div v-if="reviewMode" class="review-info">
+          复习进度: {{ reviewIndex + 1 }} / {{ reviewQueue.length }} ·
+          <a href="#" @click.prevent="exitReview">退出复习</a>
+        </div>
+
         <!-- 单题模式导航 -->
-        <div class="single-nav">
+        <div class="single-nav" v-if="!reviewMode">
           <button class="btn outline" @click="prevQuestion" :disabled="currentIndex === 0">上一题</button>
           <span class="single-nav-info">{{ currentIndex + 1 }} / {{ allQuestions.length }}</span>
           <button class="btn" @click="nextQuestion" :disabled="currentIndex >= allQuestions.length - 1">下一题</button>
@@ -1021,6 +1072,10 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         <!-- 解析区 -->
         <div v-if="showExplanations[q.id] || (results[q.id] && !results[q.id].correct)" class="explanation">
           <div class="explanation-title">解析</div>
+          <div class="correct-answer-box" v-if="q.answer">
+            <span class="correct-answer-label">正确答案：</span>
+            <span class="correct-answer-text">{{ formatAnswer(q.answer) }}</span>
+          </div>
           <div>{{ q.explanation || '暂无解析' }}</div>
           <div v-if="q.knowledge" class="explanation-knowledge">知识点：{{ q.knowledge }}</div>
         </div>
@@ -1100,8 +1155,9 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         </div>
       </div>
 
-      <div style="text-align:center;margin-top:20px;">
-        <button class="btn small outline" @click="clearProgress" style="color:var(--destructive);">清除答题记录</button>
+      <div style="text-align:center;margin-top:20px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+        <button class="btn small outline" @click="clearProgress" style="color:var(--warning);">清除本地记录</button>
+        <button class="btn small outline" @click="resetAllStats" style="color:var(--destructive);">清除全部记录</button>
       </div>
     </div>
 
@@ -1109,8 +1165,9 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
     <div v-show="activeTab==='mistakes'">
       <div class="page-title">错题本</div>
 
-      <div style="margin-bottom:12px;" v-if="mistakes.length > 0">
+      <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;" v-if="mistakes.length > 0">
         <button class="btn" @click="practiceMistakes">只刷错题 ({{ stats.mistake_count || 0 }}题)</button>
+        <button class="btn outline" @click="startReview">Anki 复习</button>
       </div>
 
       <div v-if="mistakes.length === 0 && !loading" class="empty-state">

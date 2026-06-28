@@ -292,6 +292,16 @@ def api_admin_backup():
     return jsonify({"backup_path": path})
 
 
+@app.route("/api/reset_stats", methods=["POST"])
+def reset_stats():
+    """清除所有答题记录（统计、错题）"""
+    try:
+        db.reset_progress()
+        return jsonify({"ok": True, "message": "答题记录已清除"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Not found"}), 404

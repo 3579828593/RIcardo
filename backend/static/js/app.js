@@ -51,6 +51,11 @@ createApp({
     const allQuestions = ref([]);
     const courseCounts = ref({});
 
+    // Anki 复习模式
+    const reviewMode = ref(false);
+    const reviewQueue = ref([]);
+    const reviewIndex = ref(0);
+
     // ========== localStorage 持久化 ==========
     const STORAGE_KEY = 'quiz_state_v1';
     function saveState() {
@@ -515,6 +520,63 @@ createApp({
       showToast('答题记录已清除', 'info');
     };
 
+    // ========== 继续上次练习 ==========
+    const continueLastPractice = () => {
+      // 从 localStorage 恢复上次的页码和位置
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          showToast('没有之前的练习记录', 'info');
+          return;
+        }
+        const state = JSON.parse(raw);
+        if (state.singleMode && state.currentIndex !== undefined) {
+          // 单题模式恢复
+          singleMode.value = true;
+          loadAllForSingleMode().then(() => {
+            currentIndex.value = Math.min(state.currentIndex, allQuestions.value.length - 1);
+            showToast(`继续第 ${currentIndex.value + 1} 题`, 'info');
+          });
+        } else if (state.page) {
+          // 列表模式恢复
+          singleMode.value = false;
+          loadQuestions(state.page).then(() => {
+            showToast(`继续第 ${state.page} 页`, 'info');
+          });
+        } else {
+          showToast('没有未完成的练习', 'info');
+        }
+      } catch(e) {
+        showToast('恢复失败', 'error');
+      }
+    };
+
+    // 计算未答题数
+    const unansweredCount = computed(() => {
+      if (!questions.value.length) return 0;
+      return questions.value.filter(q => !results[q.id]).length;
+    });
+
+    // ========== 清除后端全部答题记录 ==========
+    const resetAllStats = async () => {
+      if (!confirm('确定要清除所有后端答题记录吗？这将重置统计数据。')) return;
+      try {
+        const res = await fetch('/api/reset_stats', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          // 同时清除本地记录
+          Object.keys(userAnswers).forEach(k => delete userAnswers[k]);
+          Object.keys(results).forEach(k => delete results[k]);
+          localStorage.removeItem(STORAGE_KEY);
+          loadStats();
+          loadQuestions(1);
+          showToast('所有答题记录已清除', 'success');
+        }
+      } catch(e) {
+        showToast('清除失败', 'error');
+      }
+    };
+
     // ========== 错题 ==========
     const loadMistakes = async (p = 1) => {
       mistakePage.value = p;
@@ -547,6 +609,70 @@ createApp({
       } catch(e) {
         showToast('加载错题失败', 'error');
       }
+    };
+
+    // ========== Anki 错题复习模式 ==========
+    const startReview = async () => {
+      try {
+        const res = await fetch('/api/mistakes?page=1&page_size=100');
+        const data = await res.json();
+        if (!data.items || data.items.length === 0) {
+          showToast('暂无错题可复习', 'info');
+          return;
+        }
+        reviewQueue.value = data.items;
+        reviewIndex.value = 0;
+        reviewMode.value = true;
+        singleMode.value = true;
+        allQuestions.value = data.items;
+        currentIndex.value = 0;
+        prepareQuestionState(allQuestions.value);
+        activeTab.value = 'quiz';
+        showToast(`开始复习 ${data.items.length} 道错题`, 'info');
+      } catch(e) {
+        showToast('加载错题失败', 'error');
+      }
+    };
+
+    const reviewQuestion = computed(() => {
+      if (!reviewMode.value) return null;
+      return reviewQueue.value[reviewIndex.value] || null;
+    });
+
+    const rateReview = (rating) => {
+      // rating: 'again' | 'fuzzy' | 'mastered'
+      if (rating === 'again') {
+        // 把当前题移到队列末尾
+        const q = reviewQueue.value.splice(reviewIndex.value, 1)[0];
+        reviewQueue.value.push(q);
+        showToast('稍后再练', 'info');
+      } else if (rating === 'fuzzy') {
+        showToast('标记为模糊', 'info');
+        reviewIndex.value++;
+      } else if (rating === 'mastered') {
+        // 从队列移除
+        reviewQueue.value.splice(reviewIndex.value, 1);
+        showToast('已掌握！', 'success');
+      }
+
+      if (reviewQueue.value.length === 0 || reviewIndex.value >= reviewQueue.value.length) {
+        if (reviewQueue.value.length === 0) {
+          showToast('全部错题已复习完！', 'success');
+          reviewMode.value = false;
+          singleMode.value = false;
+          loadQuestions(1);
+        } else {
+          reviewIndex.value = 0;
+        }
+      } else {
+        currentIndex.value = reviewIndex.value;
+      }
+    };
+
+    const exitReview = () => {
+      reviewMode.value = false;
+      singleMode.value = false;
+      loadQuestions(1);
     };
 
     // ========== 收藏 ==========
@@ -741,6 +867,7 @@ createApp({
       singleMode, currentIndex, allQuestions, courseCounts,
       selectedTypes, selectedCourse,
       currentQuestion, hasMore,
+      reviewMode, reviewQueue, reviewIndex, reviewQuestion,
 
       // 计算属性
       themeLabel, progressPercent, maxTypeCount, maxCourseCount,
@@ -755,10 +882,13 @@ createApp({
       isFav, toggleFav, redoQuestion,
       typeLabel, courseLabel, formatAnswer, barWidth, showToast,
       clearProgress, getFillBlanks, setFillBlankAnswer, practiceMistakes,
+      continueLastPractice, unansweredCount,
+      resetAllStats,
       // Chip & 单题模式方法
       toggleTypeChip, selectCourse, isTypeSelected, isCourseSelected,
       enterSingleMode, exitSingleMode, nextQuestion, prevQuestion,
       loadMore, loadCourseCounts,
+      startReview, rateReview, exitReview,
     };
   }
 }).mount('#app');

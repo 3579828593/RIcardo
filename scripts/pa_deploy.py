@@ -193,7 +193,7 @@ def cmd_update(args):
             print(f"  {line}")
     # 2. 安装依赖（如果有变更）
     print("[2/3] 检查依赖...")
-    output = send_command(token, username, f"pip3.{PYTHON_VERSION} install --user -r {BACKEND_DIR}/requirements.txt", wait=10)
+    output = send_command(token, username, f"pip{PYTHON_VERSION} install --user -r {BACKEND_DIR}/requirements.txt", wait=10)
     if output and "Successfully installed" in output:
         print("  依赖已更新")
     else:
@@ -231,7 +231,7 @@ def cmd_deploy(args):
     print("  仓库已克隆")
     # 2. 安装依赖
     print(f"[2/6] 安装 Python {PYTHON_VERSION} 依赖...")
-    output = send_command(token, username, f"pip3.{PYTHON_VERSION} install --user -r {BACKEND_DIR}/requirements.txt", wait=20)
+    output = send_command(token, username, f"pip{PYTHON_VERSION} install --user -r {BACKEND_DIR}/requirements.txt", wait=20)
     if output and "Successfully installed" in output:
         print("  依赖安装成功")
     # 3. 初始化数据库
