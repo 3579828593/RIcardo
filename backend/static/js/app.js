@@ -838,9 +838,10 @@ createApp({
       document.documentElement.setAttribute('data-theme', theme.value);
       window.addEventListener('keydown', handleKeydown);
       loadState(); // 恢复之前的状态
+      // 并行加载首屏数据（不互相依赖的请求同时发出）
       loadChapters();
       loadCourseCounts();
-      loadQuestions(page.value); // 使用恢复的页码
+      loadQuestions(page.value);
       loadStats();
       loadMistakes(1);
       loadFavorites(1);
