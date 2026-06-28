@@ -184,7 +184,7 @@ def cmd_update(args):
     domain = get_domain(username)
     print("=== 更新应用 ===")
     # 1. Git pull
-    print("[1/3] 拉取最新代码...")
+    print("[1/4] 拉取最新代码...")
     output = send_command(token, username, f"cd {BACKEND_DIR} && git pull", wait=5)
     if output:
         # 只显示最后几行
@@ -192,14 +192,18 @@ def cmd_update(args):
         for line in lines[-5:]:
             print(f"  {line}")
     # 2. 安装依赖（如果有变更）
-    print("[2/3] 检查依赖...")
+    print("[2/4] 检查依赖...")
     output = send_command(token, username, f"pip{PYTHON_VERSION} install --user -r {BACKEND_DIR}/requirements.txt", wait=10)
     if output and "Successfully installed" in output:
         print("  依赖已更新")
     else:
         print("  依赖无变更")
-    # 3. 重载应用
-    print("[3/3] 重载 Web 应用...")
+    # 3. 清除 .pyc 缓存（关键！否则 WSGI 运行旧代码）
+    print("[3/4] 清除 .pyc 缓存...")
+    send_command(token, username, f"find {BACKEND_DIR}/__pycache__ -name '*.pyc' -delete 2>/dev/null", wait=2)
+    send_command(token, username, f"rm -f {BACKEND_DIR}/data/quiz.db-wal {BACKEND_DIR}/data/quiz.db-shm 2>/dev/null", wait=2)
+    # 4. 重载应用
+    print("[4/4] 重载 Web 应用...")
     result = api_call(token, username, "POST", f"webapps/{domain}/reload/", expect_json=False)
     if result is not None:
         print("  [OK] 应用已重载")
