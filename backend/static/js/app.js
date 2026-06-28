@@ -56,6 +56,20 @@ createApp({
     const reviewQueue = ref([]);
     const reviewIndex = ref(0);
 
+    // ========== 触觉反馈 ==========
+    const haptic = {
+      light: () => { if (navigator.vibrate) navigator.vibrate(10); },
+      medium: () => { if (navigator.vibrate) navigator.vibrate(25); },
+      heavy: () => { if (navigator.vibrate) navigator.vibrate([50, 30, 50]); },
+      success: () => { if (navigator.vibrate) navigator.vibrate([15, 50, 15]); },
+      error: () => { if (navigator.vibrate) navigator.vibrate([80, 50, 80]); },
+    };
+
+    // ========== 连击系统 ==========
+    const streak = ref(0);
+    const showCombo = ref(false);
+    let comboTimeout = null;
+
     // ========== localStorage 持久化 ==========
     const STORAGE_KEY = 'quiz_state_v1';
     function saveState() {
@@ -205,10 +219,33 @@ createApp({
       setTimeout(() => { loadingDone.value = false; }, 300);
     };
 
+    // ========== Session ID（用户数据隔离）==========
+    // 每个浏览器生成唯一 ID，不同设备/浏览器数据互不干扰
+    const SESSION_KEY = 'quiz_session_id';
+    function getSessionId() {
+      let sid = localStorage.getItem(SESSION_KEY);
+      if (!sid) {
+        // 生成随机 ID: 时间戳 + 随机数
+        sid = 's_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 12);
+        localStorage.setItem(SESSION_KEY, sid);
+      }
+      return sid;
+    }
+    const sessionId = getSessionId();
+
+    // 统一 API 请求封装：自动带上 X-Session-Id
+    async function apiFetch(url, options = {}) {
+      options.headers = options.headers || {};
+      options.headers['X-Session-Id'] = sessionId;
+      return fetch(url, options);
+    }
+
     // 带加载状态的 fetch 封装
-    const fetchWithLoading = async (url, options) => {
+    const fetchWithLoading = async (url, options = {}) => {
       startLoading();
       try {
+        options.headers = options.headers || {};
+        options.headers['X-Session-Id'] = sessionId;
         const res = await fetch(url, options);
         const data = await res.json();
         finishLoading();
@@ -230,6 +267,7 @@ createApp({
     // ========== Tab 切换 ==========
     const switchTab = (tab) => {
       if (activeTab.value === tab && tab !== 'quiz') return; // 避免重复刷新
+      haptic.light();
       activeTab.value = tab;
       if (tab === 'quiz') return; // 刷题页不自动刷新
       if (tab === 'stats') loadStats();
@@ -298,6 +336,7 @@ createApp({
       prepareQuestionState(questions.value);
       totalPages.value = Math.ceil(data.total / data.page_size) || 1;
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      haptic.light();
     };
 
     const loadRandom = async () => {
@@ -370,7 +409,7 @@ createApp({
         if (selectedTypes.value.length > 0) params.set('type', selectedTypes.value.join(','));
         if (filter.chapter) params.set('chapter', filter.chapter);
         if (filter.keyword) params.set('keyword', filter.keyword);
-        const res = await fetch('/api/questions?' + params);
+        const res = await apiFetch('/api/questions?' + params);
         const data = await res.json();
         allQuestions.value = data.items || [];
         prepareQuestionState(allQuestions.value);
@@ -390,7 +429,7 @@ createApp({
       if (filter.chapter) params.set('chapter', filter.chapter);
       if (filter.keyword) params.set('keyword', filter.keyword);
       try {
-        const res = await fetch('/api/questions?' + params);
+        const res = await apiFetch('/api/questions?' + params);
         const data = await res.json();
         questions.value = [...questions.value, ...(data.items || [])];
         prepareQuestionState(questions.value);
@@ -403,7 +442,7 @@ createApp({
     // ========== 课程数量加载 ==========
     const loadCourseCounts = async () => {
       try {
-        const res = await fetch('/api/stats');
+        const res = await apiFetch('/api/stats');
         const data = await res.json();
         if (data.course_distribution) {
           courseCounts.value = data.course_distribution;
@@ -414,11 +453,13 @@ createApp({
     // ========== 选项交互 ==========
     const selectOption = (q, key) => {
       if (results[q.id]) return; // 已提交则不可再选
+      haptic.light();
       userAnswers[q.id] = key;
     };
 
     const toggleMultipleOption = (q, key) => {
       if (results[q.id]) return;
+      haptic.light();
       if (!Array.isArray(userAnswers[q.id])) {
         userAnswers[q.id] = [];
       }
@@ -467,7 +508,7 @@ createApp({
 
       // 静默提交，不显示加载条
       try {
-        const res = await fetch('/api/submit', {
+        const res = await apiFetch('/api/submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question_id: q.id, answer: ans })
@@ -475,8 +516,18 @@ createApp({
         const data = await res.json();
         results[q.id] = data;
         if (data.correct) {
+          streak.value++;
+          haptic.success();
+          if (streak.value >= 3) {
+            showCombo.value = true;
+            clearTimeout(comboTimeout);
+            comboTimeout = setTimeout(() => { showCombo.value = false; }, 2000);
+          }
           showToast('回答正确!', 'success');
         } else {
+          streak.value = 0;
+          showCombo.value = false;
+          haptic.error();
           showToast('回答错误', 'error');
         }
         // 延迟刷新统计（不显示加载条）
@@ -503,7 +554,7 @@ createApp({
 
     const loadStatsSilent = async () => {
       try {
-        const res = await fetch('/api/stats');
+        const res = await apiFetch('/api/stats');
         stats.value = await res.json();
       } catch(e) {}
     };
@@ -561,7 +612,7 @@ createApp({
     const resetAllStats = async () => {
       if (!confirm('确定要清除所有后端答题记录吗？这将重置统计数据。')) return;
       try {
-        const res = await fetch('/api/reset_stats', { method: 'POST' });
+        const res = await apiFetch('/api/reset_stats', { method: 'POST' });
         const data = await res.json();
         if (data.ok) {
           // 同时清除本地记录
@@ -593,7 +644,7 @@ createApp({
     const practiceMistakes = async () => {
       try {
         // 加载所有错题
-        const res = await fetch('/api/mistakes?page=1&page_size=100');
+        const res = await apiFetch('/api/mistakes?page=1&page_size=100');
         const data = await res.json();
         if (!data.items || data.items.length === 0) {
           showToast('暂无错题', 'info');
@@ -614,7 +665,7 @@ createApp({
     // ========== Anki 错题复习模式 ==========
     const startReview = async () => {
       try {
-        const res = await fetch('/api/mistakes?page=1&page_size=100');
+        const res = await apiFetch('/api/mistakes?page=1&page_size=100');
         const data = await res.json();
         if (!data.items || data.items.length === 0) {
           showToast('暂无错题可复习', 'info');
@@ -690,7 +741,7 @@ createApp({
 
     const loadChapters = async () => {
       try {
-        const data = await fetch('/api/chapters');
+        const data = await apiFetch('/api/chapters');
         const result = await data.json();
         // 如果有指定课程的筛选，用对应课程章节，否则合并所有
         if (typeof result === 'object' && !Array.isArray(result)) {
@@ -714,6 +765,7 @@ createApp({
     const isFav = (id) => favIds.value.has(id);
 
     const toggleFav = async (q) => {
+      haptic.medium();
       const wasFav = isFav(q.id);
       const method = wasFav ? 'DELETE' : 'POST';
       try {
@@ -869,6 +921,7 @@ createApp({
       selectedTypes, selectedCourse,
       currentQuestion, hasMore,
       reviewMode, reviewQueue, reviewIndex, reviewQuestion,
+      streak, showCombo,
 
       // 计算属性
       themeLabel, progressPercent, maxTypeCount, maxCourseCount,

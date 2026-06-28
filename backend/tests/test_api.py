@@ -275,17 +275,17 @@ class TestQuizAPI(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         return resp.data.decode("utf-8")
 
-    # 13. CSS 变量 — 21th 亮色
+    # 13. CSS 变量 — 亮色模式
     def test_light_theme_background(self):
-        """CSS 变量 --background: #c5c9c9 存在（21th 亮色）"""
+        """CSS 变量 --background: #f0f0f0 存在（现代像素风亮色）"""
         html = self._get_homepage_html()
-        self.assertIn("--background: #c5c9c9", html)
+        self.assertIn("--background: #f0f0f0", html)
 
-    # 14. CSS 变量 — 21th 暗色
+    # 14. CSS 变量 — 暗色模式
     def test_dark_theme_background(self):
-        """CSS 变量 --background: #0a0a0a 存在（21th 暗色）"""
+        """CSS 变量 --background: #0a0a1a 存在（现代像素风暗色）"""
         html = self._get_homepage_html()
-        self.assertIn("--background: #0a0a0a", html)
+        self.assertIn("--background: #0a0a1a", html)
 
     # 15. 所有 var(--xxx) 引用的变量都在 :root 中有定义
     def test_css_variables_defined(self):

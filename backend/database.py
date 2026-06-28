@@ -64,6 +64,9 @@ class QuizDatabase:
 
     def _init_db(self):
         with self.connection() as conn:
+            # 第一步：预迁移 - 为旧表添加 session_id 列（在创建索引之前）
+            self._pre_migrate(conn)
+            
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS questions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,27 +95,35 @@ class QuizDatabase:
                     user_answer TEXT,
                     correct INTEGER NOT NULL DEFAULT 0,
                     elapsed_seconds INTEGER DEFAULT 0,
+                    session_id TEXT NOT NULL DEFAULT 'legacy',
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (question_id) REFERENCES questions(id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_ar_qid ON answer_records(question_id);
                 CREATE INDEX IF NOT EXISTS idx_ar_correct ON answer_records(correct);
+                CREATE INDEX IF NOT EXISTS idx_ar_session ON answer_records(session_id);
 
                 CREATE TABLE IF NOT EXISTS mistakes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    question_id INTEGER NOT NULL UNIQUE,
+                    question_id INTEGER NOT NULL,
                     wrong_count INTEGER DEFAULT 1,
                     last_wrong_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    session_id TEXT NOT NULL DEFAULT 'legacy',
+                    UNIQUE(question_id, session_id),
                     FOREIGN KEY (question_id) REFERENCES questions(id)
                 );
+                CREATE INDEX IF NOT EXISTS idx_mistakes_session ON mistakes(session_id);
 
                 CREATE TABLE IF NOT EXISTS favorites (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    question_id INTEGER NOT NULL UNIQUE,
+                    question_id INTEGER NOT NULL,
                     tag TEXT,
+                    session_id TEXT NOT NULL DEFAULT 'legacy',
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(question_id, session_id),
                     FOREIGN KEY (question_id) REFERENCES questions(id)
                 );
+                CREATE INDEX IF NOT EXISTS idx_fav_session ON favorites(session_id);
 
                 CREATE TABLE IF NOT EXISTS exam_sessions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,6 +140,40 @@ class QuizDatabase:
                     value TEXT
                 );
             """)
+            # 第二步：后迁移 - 重建旧表以更新 UNIQUE 约束
+            self._post_migrate(conn)
+
+    def _pre_migrate(self, conn):
+        """为旧版表添加 session_id 列（在 executescript 之前运行）"""
+        for table in ('answer_records', 'mistakes', 'favorites'):
+            try:
+                cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+                if 'session_id' not in cols:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN session_id TEXT NOT NULL DEFAULT 'legacy'")
+            except Exception:
+                pass
+
+    def _post_migrate(self, conn):
+        """重建旧表以更新 UNIQUE 约束（mistakes/favorites 从 UNIQUE(question_id) 变为 UNIQUE(question_id, session_id)）"""
+        for table, create_sql in [
+            ('mistakes', "CREATE TABLE mistakes_new (id INTEGER PRIMARY KEY AUTOINCREMENT, question_id INTEGER NOT NULL, wrong_count INTEGER DEFAULT 1, last_wrong_at TEXT DEFAULT CURRENT_TIMESTAMP, session_id TEXT NOT NULL DEFAULT 'legacy', UNIQUE(question_id, session_id), FOREIGN KEY (question_id) REFERENCES questions(id))"),
+            ('favorites', "CREATE TABLE favorites_new (id INTEGER PRIMARY KEY AUTOINCREMENT, question_id INTEGER NOT NULL, tag TEXT, session_id TEXT NOT NULL DEFAULT 'legacy', created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(question_id, session_id), FOREIGN KEY (question_id) REFERENCES questions(id))"),
+        ]:
+            try:
+                schema = conn.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table}'").fetchone()
+                if schema and 'UNIQUE(question_id, session_id)' not in schema[0] and 'question_id' in schema[0]:
+                    idx_name = f"idx_{table[:3]}_session"
+                    conn.execute(f"DROP INDEX IF EXISTS {idx_name}")
+                    conn.execute(create_sql)
+                    if table == 'mistakes':
+                        conn.execute("INSERT OR IGNORE INTO mistakes_new (id, question_id, wrong_count, last_wrong_at, session_id) SELECT id, question_id, wrong_count, last_wrong_at, COALESCE(session_id, 'legacy') FROM mistakes")
+                    else:
+                        conn.execute("INSERT OR IGNORE INTO favorites_new (id, question_id, tag, session_id, created_at) SELECT id, question_id, tag, COALESCE(session_id, 'legacy'), created_at FROM favorites")
+                    conn.execute(f"DROP TABLE {table}")
+                    conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+                    conn.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}(session_id)")
+            except Exception:
+                pass
 
     def backup(self):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -266,31 +311,31 @@ class QuizDatabase:
             q['stem'] = clean_stem(q.get('stem', ''))
         return results
 
-    def record_answer(self, question_id: int, user_answer, correct: bool, elapsed: int = 0):
+    def record_answer(self, question_id: int, user_answer, correct: bool, elapsed: int = 0, session_id: str = 'anon'):
         with self.connection() as conn:
             conn.execute(
-                "INSERT INTO answer_records (question_id, user_answer, correct, elapsed_seconds) VALUES (?, ?, ?, ?)",
-                (question_id, json.dumps(user_answer, ensure_ascii=False), int(correct), elapsed),
+                "INSERT INTO answer_records (question_id, user_answer, correct, elapsed_seconds, session_id) VALUES (?, ?, ?, ?, ?)",
+                (question_id, json.dumps(user_answer, ensure_ascii=False), int(correct), elapsed, session_id),
             )
             if correct:
-                conn.execute("DELETE FROM mistakes WHERE question_id = ?", (question_id,))
+                conn.execute("DELETE FROM mistakes WHERE question_id = ? AND session_id = ?", (question_id, session_id))
             else:
                 conn.execute(
-                    """INSERT INTO mistakes (question_id, wrong_count, last_wrong_at)
-                    VALUES (?, 1, CURRENT_TIMESTAMP)
-                    ON CONFLICT(question_id) DO UPDATE SET
+                    """INSERT INTO mistakes (question_id, wrong_count, last_wrong_at, session_id)
+                    VALUES (?, 1, CURRENT_TIMESTAMP, ?)
+                    ON CONFLICT(question_id, session_id) DO UPDATE SET
                     wrong_count = wrong_count + 1, last_wrong_at = CURRENT_TIMESTAMP""",
-                    (question_id,),
+                    (question_id, session_id),
                 )
 
-    def get_stats(self) -> dict:
+    def get_stats(self, session_id: str = 'anon') -> dict:
         with self.connection() as conn:
             total = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
-            answered = conn.execute("SELECT COUNT(DISTINCT question_id) FROM answer_records").fetchone()[0]
-            correct = conn.execute("SELECT COUNT(*) FROM answer_records WHERE correct = 1").fetchone()[0]
-            total_answers = conn.execute("SELECT COUNT(*) FROM answer_records").fetchone()[0]
-            mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes").fetchone()[0]
-            fav_count = conn.execute("SELECT COUNT(*) FROM favorites").fetchone()[0]
+            answered = conn.execute("SELECT COUNT(DISTINCT question_id) FROM answer_records WHERE session_id = ?", (session_id,)).fetchone()[0]
+            correct = conn.execute("SELECT COUNT(*) FROM answer_records WHERE correct = 1 AND session_id = ?", (session_id,)).fetchone()[0]
+            total_answers = conn.execute("SELECT COUNT(*) FROM answer_records WHERE session_id = ?", (session_id,)).fetchone()[0]
+            mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes WHERE session_id = ?", (session_id,)).fetchone()[0]
+            fav_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE session_id = ?", (session_id,)).fetchone()[0]
             type_dist = conn.execute("SELECT type, COUNT(*) FROM questions GROUP BY type").fetchall()
             course_dist = conn.execute("SELECT course, COUNT(*) FROM questions GROUP BY course").fetchall()
         return {
@@ -305,52 +350,54 @@ class QuizDatabase:
             "course_distribution": {r[0]: r[1] for r in course_dist},
         }
 
-    def get_mistakes(self, page=1, page_size=20):
+    def get_mistakes(self, page=1, page_size=20, session_id='anon'):
         offset = (page - 1) * page_size
         with self.connection() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM mistakes").fetchone()[0]
+            total = conn.execute("SELECT COUNT(*) FROM mistakes WHERE session_id = ?", (session_id,)).fetchone()[0]
             rows = conn.execute(
                 """SELECT q.*, m.wrong_count, m.last_wrong_at
                 FROM questions q JOIN mistakes m ON q.id = m.question_id
+                WHERE m.session_id = ?
                 ORDER BY m.wrong_count DESC, m.last_wrong_at DESC
                 LIMIT ? OFFSET ?""",
-                (page_size, offset),
+                (session_id, page_size, offset),
             ).fetchall()
         return {"items": [self._row_to_dict(r) for r in rows], "page": page, "page_size": page_size, "total": total}
 
-    def get_favorites(self, page=1, page_size=20):
+    def get_favorites(self, page=1, page_size=20, session_id='anon'):
         offset = (page - 1) * page_size
         with self.connection() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM favorites").fetchone()[0]
+            total = conn.execute("SELECT COUNT(*) FROM favorites WHERE session_id = ?", (session_id,)).fetchone()[0]
             rows = conn.execute(
                 """SELECT q.*, f.tag, f.created_at as fav_at
                 FROM questions q JOIN favorites f ON q.id = f.question_id
+                WHERE f.session_id = ?
                 ORDER BY f.created_at DESC LIMIT ? OFFSET ?""",
-                (page_size, offset),
+                (session_id, page_size, offset),
             ).fetchall()
         return {"items": [self._row_to_dict(r) for r in rows], "page": page, "page_size": page_size, "total": total}
 
-    def toggle_favorite(self, question_id: int, tag: str = None):
+    def toggle_favorite(self, question_id: int, tag: str = None, session_id: str = 'anon'):
         with self.connection() as conn:
-            exists = conn.execute("SELECT 1 FROM favorites WHERE question_id = ?", (question_id,)).fetchone()
+            exists = conn.execute("SELECT 1 FROM favorites WHERE question_id = ? AND session_id = ?", (question_id, session_id)).fetchone()
             if exists:
-                conn.execute("DELETE FROM favorites WHERE question_id = ?", (question_id,))
+                conn.execute("DELETE FROM favorites WHERE question_id = ? AND session_id = ?", (question_id, session_id))
                 return False
             else:
-                conn.execute("INSERT INTO favorites (question_id, tag) VALUES (?, ?)", (question_id, tag))
+                conn.execute("INSERT INTO favorites (question_id, tag, session_id) VALUES (?, ?, ?)", (question_id, tag, session_id))
                 return True
 
-    def remove_favorite(self, question_id: int) -> bool:
+    def remove_favorite(self, question_id: int, session_id: str = 'anon') -> bool:
         """幂等删除收藏：未收藏时不创建收藏。"""
         with self.connection() as conn:
-            cur = conn.execute("DELETE FROM favorites WHERE question_id = ?", (question_id,))
+            cur = conn.execute("DELETE FROM favorites WHERE question_id = ? AND session_id = ?", (question_id, session_id))
             return cur.rowcount > 0
 
-    def reset_progress(self):
-        """清除所有答题记录（含统计与错题）"""
+    def reset_progress(self, session_id: str = 'anon'):
+        """清除指定 session 的答题记录（含统计与错题）"""
         with self.connection() as conn:
-            conn.execute("DELETE FROM answer_records")
-            conn.execute("DELETE FROM mistakes")
+            conn.execute("DELETE FROM answer_records WHERE session_id = ?", (session_id,))
+            conn.execute("DELETE FROM mistakes WHERE session_id = ?", (session_id,))
             conn.commit()
 
     def delete_question(self, qid: int):
