@@ -40,8 +40,16 @@ createApp({
     const favPage = ref(1);
     const favTotalPages = ref(1);
 
-    const filter = reactive({ course: '', type: '', chapter: '', keyword: '' });
+    const filter = reactive({ chapter: '', keyword: '' });
     const chapters = ref([]);
+    const selectedCourse = ref('');
+    const selectedTypes = ref([]);
+
+    // 单题模式状态
+    const singleMode = ref(false);
+    const currentIndex = ref(0);
+    const allQuestions = ref([]);
+    const courseCounts = ref({});
 
     // ========== localStorage 持久化 ==========
     const STORAGE_KEY = 'quiz_state_v1';
@@ -52,9 +60,13 @@ createApp({
           results: Object.fromEntries(Object.entries(results)),
           showExplanations: Object.fromEntries(Object.entries(showExplanations)),
           page: page.value,
-          filter: { course: filter.course, type: filter.type, chapter: filter.chapter, keyword: filter.keyword },
+          selectedTypes: selectedTypes.value,
+          selectedCourse: selectedCourse.value,
+          filter: { chapter: filter.chapter, keyword: filter.keyword },
           mode: mode.value,
           activeTab: activeTab.value,
+          singleMode: singleMode.value,
+          currentIndex: currentIndex.value,
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       } catch(e) { /* localStorage 满了就忽略 */ }
@@ -68,14 +80,18 @@ createApp({
         if (state.results) Object.assign(results, state.results);
         if (state.showExplanations) Object.assign(showExplanations, state.showExplanations);
         if (state.page) page.value = state.page;
+        if (state.selectedTypes) selectedTypes.value = state.selectedTypes;
+        if (state.selectedCourse !== undefined) selectedCourse.value = state.selectedCourse;
         if (state.filter) Object.assign(filter, state.filter);
         if (state.mode) mode.value = state.mode;
         if (state.activeTab) activeTab.value = state.activeTab;
+        if (state.singleMode) singleMode.value = state.singleMode;
+        if (state.currentIndex) currentIndex.value = state.currentIndex;
       } catch(e) { /* 解析失败忽略 */ }
     }
     // 用 watch 自动保存
     watch([userAnswers, results, showExplanations], saveState, { deep: true });
-    watch([page, mode, activeTab, () => filter.course, () => filter.type, () => filter.chapter, () => filter.keyword], saveState);
+    watch([page, mode, activeTab, selectedTypes, selectedCourse, () => filter.chapter, () => filter.keyword, singleMode, currentIndex], saveState, { deep: true });
 
     // ========== 计算属性 ==========
     const themeLabel = computed(() => theme.value === 'dark' ? 'LIGHT' : 'DARK');
@@ -99,6 +115,15 @@ createApp({
     const visiblePages = computed(() => buildVisiblePages(page.value, totalPages.value));
     const mistakeVisiblePages = computed(() => buildVisiblePages(mistakePage.value, mistakeTotalPages.value));
     const favVisiblePages = computed(() => buildVisiblePages(favPage.value, favTotalPages.value));
+
+    // 单题模式：当前题目
+    const currentQuestion = computed(() => {
+      if (!singleMode.value) return null;
+      return allQuestions.value[currentIndex.value] || null;
+    });
+
+    // 加载更多：是否还有更多
+    const hasMore = computed(() => page.value < totalPages.value);
 
     // ========== 工具函数 ==========
     const typeLabel = (t) => {
@@ -210,8 +235,9 @@ createApp({
 
     // ========== 筛选相关 ==========
     const onFilterChange = () => {
-      loadChapters(); // 课程变化时刷新章节列表
-      if (mode.value === 'normal') {
+      if (singleMode.value) {
+        loadAllForSingleMode();
+      } else if (mode.value === 'normal') {
         loadQuestions(1);
       } else {
         loadRandom();
@@ -258,8 +284,8 @@ createApp({
     const loadQuestions = async (p = 1) => {
       page.value = p;
       const params = new URLSearchParams({ page: p, page_size: 20 });
-      if (filter.course) params.set('course', filter.course);
-      if (filter.type) params.set('type', filter.type);
+      if (selectedCourse.value) params.set('course', selectedCourse.value);
+      if (selectedTypes.value.length > 0) params.set('type', selectedTypes.value.join(','));
       if (filter.chapter) params.set('chapter', filter.chapter);
       if (filter.keyword) params.set('keyword', filter.keyword);
       const data = await fetchWithLoading('/api/questions?' + params);
@@ -271,14 +297,113 @@ createApp({
 
     const loadRandom = async () => {
       const params = new URLSearchParams({ limit: 20 });
-      if (filter.course) params.set('course', filter.course);
-      if (filter.type) params.set('type', filter.type);
+      if (selectedCourse.value) params.set('course', selectedCourse.value);
+      if (selectedTypes.value.length > 0) params.set('type', selectedTypes.value.join(','));
       if (filter.chapter) params.set('chapter', filter.chapter);
       const data = await fetchWithLoading('/api/questions/random?' + params);
       questions.value = data.items || [];
       prepareQuestionState(questions.value);
       totalPages.value = 1;
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    // ========== Filter Chip 切换 ==========
+    const toggleTypeChip = (type) => {
+      const idx = selectedTypes.value.indexOf(type);
+      if (idx >= 0) {
+        selectedTypes.value.splice(idx, 1);
+      } else {
+        selectedTypes.value.push(type);
+      }
+      onFilterChange();
+    };
+
+    const isTypeSelected = (type) => selectedTypes.value.includes(type);
+
+    const selectCourse = (course) => {
+      if (selectedCourse.value === course) {
+        selectedCourse.value = ''; // 再点一次取消
+      } else {
+        selectedCourse.value = course;
+      }
+      loadChapters();
+      onFilterChange();
+    };
+
+    const isCourseSelected = (course) => selectedCourse.value === course;
+
+    // ========== 单题模式 ==========
+    const enterSingleMode = () => {
+      singleMode.value = true;
+      currentIndex.value = 0;
+      loadAllForSingleMode();
+    };
+
+    const exitSingleMode = () => {
+      singleMode.value = false;
+      loadQuestions(1);
+    };
+
+    const nextQuestion = () => {
+      if (currentIndex.value < allQuestions.value.length - 1) {
+        currentIndex.value++;
+      } else {
+        showToast('已经是最后一题了', 'info');
+      }
+    };
+
+    const prevQuestion = () => {
+      if (currentIndex.value > 0) {
+        currentIndex.value--;
+      }
+    };
+
+    const loadAllForSingleMode = async () => {
+      try {
+        const params = new URLSearchParams({ page: 1, page_size: 500 });
+        if (selectedCourse.value) params.set('course', selectedCourse.value);
+        if (selectedTypes.value.length > 0) params.set('type', selectedTypes.value.join(','));
+        if (filter.chapter) params.set('chapter', filter.chapter);
+        if (filter.keyword) params.set('keyword', filter.keyword);
+        const res = await fetch('/api/questions?' + params);
+        const data = await res.json();
+        allQuestions.value = data.items || [];
+        prepareQuestionState(allQuestions.value);
+        currentIndex.value = 0;
+      } catch(e) {
+        showToast('加载题目失败', 'error');
+      }
+    };
+
+    // ========== 加载更多 ==========
+    const loadMore = async () => {
+      if (page.value >= totalPages.value) return;
+      const nextPage = page.value + 1;
+      const params = new URLSearchParams({ page: nextPage, page_size: 20 });
+      if (selectedCourse.value) params.set('course', selectedCourse.value);
+      if (selectedTypes.value.length > 0) params.set('type', selectedTypes.value.join(','));
+      if (filter.chapter) params.set('chapter', filter.chapter);
+      if (filter.keyword) params.set('keyword', filter.keyword);
+      try {
+        const res = await fetch('/api/questions?' + params);
+        const data = await res.json();
+        questions.value = [...questions.value, ...(data.items || [])];
+        prepareQuestionState(questions.value);
+        page.value = nextPage;
+      } catch(e) {
+        showToast('加载更多失败', 'error');
+      }
+    };
+
+    // ========== 课程数量加载 ==========
+    const loadCourseCounts = async () => {
+      try {
+        const res = await fetch('/api/stats');
+        const data = await res.json();
+        if (data.course_distribution) {
+          courseCounts.value = data.course_distribution;
+        }
+      } catch(e) {}
     };
 
     // ========== 选项交互 ==========
@@ -443,8 +568,8 @@ createApp({
         const result = await data.json();
         // 如果有指定课程的筛选，用对应课程章节，否则合并所有
         if (typeof result === 'object' && !Array.isArray(result)) {
-          if (filter.course && result[filter.course]) {
-            chapters.value = result[filter.course];
+          if (selectedCourse.value && result[selectedCourse.value]) {
+            chapters.value = result[selectedCourse.value];
           } else {
             // 合并所有课程的章节
             const allChapters = new Set();
@@ -502,8 +627,8 @@ createApp({
           page.value = 1;
 
           // 设置筛选为该题所属课程和题型
-          filter.course = data.course || '';
-          filter.type = data.type || '';
+          selectedCourse.value = data.course || '';
+          selectedTypes.value = data.type ? [data.type] : [];
           filter.chapter = '';
           filter.keyword = '';
           showMoreFilter.value = false;
@@ -588,6 +713,7 @@ createApp({
       window.addEventListener('keydown', handleKeydown);
       loadState(); // 恢复之前的状态
       loadChapters();
+      loadCourseCounts();
       loadQuestions(page.value); // 使用恢复的页码
       loadStats();
       loadMistakes(1);
@@ -611,6 +737,10 @@ createApp({
       loading, loadingDone, loadingKey, toasts, showMoreFilter,
       mistakePage, mistakeTotalPages, favPage, favTotalPages,
       filter, chapters,
+      // 单题模式 & Chip 状态
+      singleMode, currentIndex, allQuestions, courseCounts,
+      selectedTypes, selectedCourse,
+      currentQuestion, hasMore,
 
       // 计算属性
       themeLabel, progressPercent, maxTypeCount, maxCourseCount,
@@ -624,7 +754,11 @@ createApp({
       loadStats, loadMistakes, loadFavorites,
       isFav, toggleFav, redoQuestion,
       typeLabel, courseLabel, formatAnswer, barWidth, showToast,
-      clearProgress, getFillBlanks, setFillBlankAnswer, practiceMistakes
+      clearProgress, getFillBlanks, setFillBlankAnswer, practiceMistakes,
+      // Chip & 单题模式方法
+      toggleTypeChip, selectCourse, isTypeSelected, isCourseSelected,
+      enterSingleMode, exitSingleMode, nextQuestion, prevQuestion,
+      loadMore, loadCourseCounts,
     };
   }
 }).mount('#app');

@@ -162,8 +162,15 @@ class QuizDatabase:
             where.append("chapter = ?")
             params.append(chapter)
         if qtype:
-            where.append("type = ?")
-            params.append(qtype)
+            # 支持多题型（逗号分隔，如 "single,multiple"）
+            types = [t.strip() for t in qtype.split(",") if t.strip()]
+            if len(types) == 1:
+                where.append("type = ?")
+                params.append(types[0])
+            elif len(types) > 1:
+                placeholders = ",".join(["?"] * len(types))
+                where.append(f"type IN ({placeholders})")
+                params.extend(types)
         if knowledge:
             where.append("knowledge = ?")
             params.append(knowledge)
@@ -224,8 +231,15 @@ class QuizDatabase:
             where.append("chapter = ?")
             params.append(chapter)
         if qtype:
-            where.append("type = ?")
-            params.append(qtype)
+            # 支持多题型（逗号分隔）
+            types = [t.strip() for t in qtype.split(",") if t.strip()]
+            if len(types) == 1:
+                where.append("type = ?")
+                params.append(types[0])
+            elif len(types) > 1:
+                placeholders = ",".join(["?"] * len(types))
+                where.append(f"type IN ({placeholders})")
+                params.extend(types)
         clause = " AND ".join(where)
         with self.connection() as conn:
             rows = conn.execute(

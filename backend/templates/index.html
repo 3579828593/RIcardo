@@ -622,6 +622,60 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
   .stat-value { font-size: 22px; }
   .bar-label { min-width: 48px; font-size: 12px; }
 }
+
+/* ========== Filter Chip 标签样式 ========== */
+.filter-section { margin-bottom: 8px; }
+.filter-section:last-child { margin-bottom: 0; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 14px; border-radius: 20px;
+  border: 1.5px solid var(--border); background: var(--card);
+  color: var(--muted-foreground); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: border-color 0.16s, background-color 0.16s, color 0.16s, box-shadow 0.16s;
+  white-space: nowrap; -webkit-tap-highlight-color: transparent;
+  font-family: inherit; letter-spacing: inherit;
+}
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip.active {
+  background: var(--accent); border-color: var(--accent);
+  color: var(--accent-foreground); box-shadow: var(--shadow-xs);
+}
+.chip.type-chip.active { background: var(--accent); color: var(--accent-foreground); }
+.chip.reset { border-color: var(--destructive); color: var(--destructive); font-size: 12px; }
+.chip.outline { background: transparent; }
+.chip-count { font-size: 11px; opacity: 0.7; }
+.chip-label { font-size: 12px; color: var(--muted-foreground); margin-right: 2px; }
+.compact-select, .compact-input {
+  padding: 0 10px; min-height: 36px; border-radius: 8px;
+  border: 1px solid var(--border); font-size: 13px;
+  background: var(--input); color: var(--foreground); font-family: inherit;
+  box-shadow: var(--shadow-xs);
+}
+
+/* ========== 单题模式样式 ========== */
+.single-question-view { max-width: 720px; margin: 0 auto; padding-bottom: 80px; }
+.single-progress { margin-bottom: 16px; }
+.single-progress span { font-size: 13px; color: var(--muted-foreground); }
+.single-progress-bar { height: 4px; background: var(--muted); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.single-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
+.single-card { min-height: 300px; }
+.single-nav {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 20px; gap: 12px;
+}
+.single-nav-info { font-size: 14px; color: var(--muted-foreground); }
+
+/* ========== 加载更多样式 ========== */
+.load-more-area { text-align: center; padding: 20px 0; }
+.load-more-btn { min-width: 200px; }
+.load-more-done { color: var(--muted-foreground); font-size: 13px; }
+
+/* 单题模式 / Chip 移动端优化 */
+@media (max-width: 640px) {
+  .chip { padding: 5px 12px; font-size: 12px; }
+  .single-card { padding: 16px; }
+}
 </style>
 </head>
 <body>
@@ -659,41 +713,184 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
     <!-- ==================== 刷题页 ==================== -->
     <div v-show="activeTab==='quiz'">
 
-      <!-- 筛选栏 -->
+      <!-- 筛选栏 - 标签式 -->
       <div class="filter-bar">
-        <div class="filter-row">
-          <select v-model="filter.course" @change="onFilterChange()">
-            <option value="">全部课程</option>
-            <option value="weather">天气分析与预报方法</option>
-            <option value="english">大学英语II</option>
-          </select>
-          <select v-model="filter.type" @change="onFilterChange()">
-            <option value="">全部题型</option>
-            <option value="single">单选题</option>
-            <option value="multiple">多选题</option>
-            <option value="true_false">判断题</option>
-            <option value="fill_blank">填空题</option>
-            <option value="short_answer">简答题</option>
-          </select>
-          <div class="filter-actions">
-            <button class="btn mode-btn" :class="{active: mode==='normal'}" @click="switchMode('normal')">顺序</button>
-            <button class="btn mode-btn" :class="{active: mode==='random'}" @click="switchMode('random')">随机</button>
-            <button class="btn small outline" @click="showMoreFilter=!showMoreFilter">
-              {{ showMoreFilter ? '收起' : '更多筛选' }}
+        <!-- 模式切换 -->
+        <div class="filter-section">
+          <div class="chip-row">
+            <button class="chip" :class="{active: !singleMode && mode==='normal'}" @click="exitSingleMode(); switchMode('normal')">列表刷题</button>
+            <button class="chip" :class="{active: singleMode}" @click="enterSingleMode">专注模式</button>
+            <button class="chip" :class="{active: !singleMode && mode==='random'}" @click="exitSingleMode(); switchMode('random')">随机刷题</button>
+          </div>
+        </div>
+
+        <!-- 课程标签 -->
+        <div class="filter-section">
+          <div class="chip-row">
+            <button class="chip" :class="{active: !selectedCourse}" @click="selectCourse('')">全部课程</button>
+            <button class="chip" :class="{active: isCourseSelected('weather')}" @click="selectCourse('weather')">
+              天气分析 <span class="chip-count" v-if="courseCounts.weather">({{courseCounts.weather}})</span>
+            </button>
+            <button class="chip" :class="{active: isCourseSelected('english')}" @click="selectCourse('english')">
+              大学英语 <span class="chip-count" v-if="courseCounts.english">({{courseCounts.english}})</span>
             </button>
           </div>
         </div>
-        <div class="filter-expand" :class="{open: showMoreFilter}">
-          <div class="filter-row">
-            <select v-model="filter.chapter" @change="onFilterChange()">
-              <option value="">全部章节</option>
-              <option v-for="c in chapters" :key="c" :value="c">第 {{ c }} 章</option>
-            </select>
-            <input v-model="filter.keyword" @keyup.enter="onFilterChange()" placeholder="关键词搜索">
-            <button class="btn small" @click="onFilterChange()">搜索</button>
+
+        <!-- 题型标签（多选） -->
+        <div class="filter-section">
+          <div class="chip-row">
+            <span class="chip-label">题型:</span>
+            <button class="chip type-chip" :class="{active: isTypeSelected('single')}" @click="toggleTypeChip('single')">单选</button>
+            <button class="chip type-chip" :class="{active: isTypeSelected('multiple')}" @click="toggleTypeChip('multiple')">多选</button>
+            <button class="chip type-chip" :class="{active: isTypeSelected('true_false')}" @click="toggleTypeChip('true_false')">判断</button>
+            <button class="chip type-chip" :class="{active: isTypeSelected('fill_blank')}" @click="toggleTypeChip('fill_blank')">填空</button>
+            <button class="chip type-chip" :class="{active: isTypeSelected('short_answer')}" @click="toggleTypeChip('short_answer')">简答</button>
+            <button class="chip reset" v-if="selectedTypes.length > 0" @click="selectedTypes=[]; onFilterChange()">重置</button>
+          </div>
+        </div>
+
+        <!-- 更多筛选（折叠） -->
+        <div class="filter-section">
+          <button class="chip outline" @click="showMoreFilter=!showMoreFilter">
+            {{ showMoreFilter ? '收起' : '更多筛选' }}
+          </button>
+          <div class="filter-expand" :class="{open: showMoreFilter}">
+            <div class="chip-row" style="margin-top:8px;">
+              <select v-model="filter.chapter" @change="onFilterChange()" class="compact-select">
+                <option value="">全部章节</option>
+                <option v-for="c in chapters" :key="c" :value="c">第 {{ c }} 章</option>
+              </select>
+              <input v-model="filter.keyword" @keyup.enter="onFilterChange()" placeholder="关键词搜索" class="compact-input">
+              <button class="btn small" @click="onFilterChange()">搜索</button>
+            </div>
           </div>
         </div>
       </div>
+
+      <!-- 单题模式 -->
+      <div v-if="singleMode && currentQuestion" class="single-question-view">
+        <div class="single-progress">
+          <span>{{ currentIndex + 1 }} / {{ allQuestions.length }}</span>
+          <div class="single-progress-bar">
+            <div class="single-progress-fill" :style="{width: ((currentIndex + 1) / allQuestions.length * 100) + '%'}"></div>
+          </div>
+        </div>
+
+        <div class="question-card single-card">
+          <div class="question-header">
+            <div class="question-meta">
+              <span class="question-type">{{ typeLabel(currentQuestion.type) }}</span>
+              <span class="question-id">#{{ currentQuestion.id }} · {{ courseLabel(currentQuestion.course) }} · 第{{ currentQuestion.chapter }}章</span>
+            </div>
+            <button class="fav-btn" :class="{active: isFav(currentQuestion.id)}" @click="toggleFav(currentQuestion)">
+              <svg viewBox="0 0 24 24" :fill="isFav(currentQuestion.id)?'currentColor':'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+            </button>
+          </div>
+          <div class="question-stem">{{ currentQuestion.stem }}</div>
+
+          <!-- 单选/判断 -->
+          <div v-if="currentQuestion.type==='single' || currentQuestion.type==='true_false'" class="options">
+            <label v-for="(text,key) in currentQuestion.options" :key="key"
+                   class="option"
+                   :class="{
+                     selected: userAnswers[currentQuestion.id]===key && !results[currentQuestion.id],
+                     'correct-answer': results[currentQuestion.id] && isCorrectOption(currentQuestion, key),
+                     'wrong-selected': results[currentQuestion.id] && userAnswers[currentQuestion.id]===key && !isCorrectOption(currentQuestion, key)
+                   }"
+                   @click.prevent="selectOption(currentQuestion, key)">
+              <span class="option-label">{{ key }}.</span>
+              <span class="option-text">{{ text }}</span>
+              <span v-if="results[currentQuestion.id] && isCorrectOption(currentQuestion, key)" class="option-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <span v-if="results[currentQuestion.id] && userAnswers[currentQuestion.id]===key && !isCorrectOption(currentQuestion, key)" class="option-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </span>
+            </label>
+          </div>
+
+          <!-- 多选 -->
+          <div v-else-if="currentQuestion.type==='multiple'" class="options">
+            <label v-for="(text,key) in currentQuestion.options" :key="key"
+                   class="option"
+                   :class="{
+                     selected: (userAnswers[currentQuestion.id]||[]).includes(key) && !results[currentQuestion.id],
+                     'correct-answer': results[currentQuestion.id] && isCorrectOption(currentQuestion, key),
+                     'wrong-selected': results[currentQuestion.id] && (userAnswers[currentQuestion.id]||[]).includes(key) && !isCorrectOption(currentQuestion, key)
+                   }"
+                   @click.prevent="toggleMultipleOption(currentQuestion, key)">
+              <span class="option-label">{{ key }}.</span>
+              <span class="option-text">{{ text }}</span>
+              <span v-if="results[currentQuestion.id] && isCorrectOption(currentQuestion, key)" class="option-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <span v-if="results[currentQuestion.id] && (userAnswers[currentQuestion.id]||[]).includes(key) && !isCorrectOption(currentQuestion, key)" class="option-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </span>
+            </label>
+          </div>
+
+          <!-- 填空 -->
+          <div v-else-if="currentQuestion.type==='fill_blank'">
+            <div v-if="getFillBlanks(currentQuestion).length > 1">
+              <div v-for="(blank, idx) in getFillBlanks(currentQuestion)" :key="idx" style="margin-bottom:8px;">
+                <span style="font-size:13px;color:var(--muted-foreground);margin-right:6px;">空 {{idx+1}}:</span>
+                <input class="fill-input" style="display:inline-block;width:auto;min-width:200px;"
+                       :value="(userAnswers[currentQuestion.id]||[])[idx] || ''"
+                       @input="setFillBlankAnswer(currentQuestion, idx, $event.target.value)"
+                       :placeholder="'请填写第'+(idx+1)+'空'"
+                       :disabled="results[currentQuestion.id]">
+              </div>
+            </div>
+            <div v-else>
+              <input class="fill-input" v-model="userAnswers[currentQuestion.id]" placeholder="请填写答案" :disabled="results[currentQuestion.id]">
+            </div>
+          </div>
+          <div v-else>
+            <input class="fill-input" v-model="userAnswers[currentQuestion.id]" placeholder="请简述答案" :disabled="results[currentQuestion.id]">
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="question-actions" v-if="!results[currentQuestion.id]">
+            <button class="btn" @click="submitAnswer(currentQuestion)">提交答案</button>
+            <button class="btn outline" @click="toggleExplanation(currentQuestion.id)">
+              {{ showExplanations[currentQuestion.id] ? '收起解析' : '查看解析' }}
+            </button>
+          </div>
+
+          <!-- 提交反馈 -->
+          <div v-if="results[currentQuestion.id]" class="feedback" :class="results[currentQuestion.id].correct?'correct':'wrong'">
+            <span v-if="results[currentQuestion.id].correct" class="feedback-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
+            <span v-else class="feedback-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </span>
+            <span v-if="results[currentQuestion.id].correct">回答正确</span>
+            <span v-else>回答错误，正确答案：{{ formatAnswer(currentQuestion.answer) }}</span>
+          </div>
+
+          <!-- 解析区 -->
+          <div v-if="showExplanations[currentQuestion.id] || (results[currentQuestion.id] && !results[currentQuestion.id].correct)" class="explanation">
+            <div class="explanation-title">解析</div>
+            <div>{{ currentQuestion.explanation || '暂无解析' }}</div>
+            <div v-if="currentQuestion.knowledge" class="explanation-knowledge">知识点：{{ currentQuestion.knowledge }}</div>
+          </div>
+        </div>
+
+        <!-- 单题模式导航 -->
+        <div class="single-nav">
+          <button class="btn outline" @click="prevQuestion" :disabled="currentIndex === 0">上一题</button>
+          <span class="single-nav-info">{{ currentIndex + 1 }} / {{ allQuestions.length }}</span>
+          <button class="btn" @click="nextQuestion" :disabled="currentIndex >= allQuestions.length - 1">下一题</button>
+        </div>
+      </div>
+
+      <!-- 列表模式 -->
+      <div v-if="!singleMode">
 
       <!-- 进度指示器 -->
       <div class="progress-bar-wrapper" v-if="questions.length > 0 || mode==='normal'">
@@ -829,19 +1026,14 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         </div>
       </div>
 
-      <!-- 分页 -->
-      <div class="pagination" v-if="mode==='normal' && totalPages > 1">
-        <button :disabled="page <= 1" @click="loadQuestions(page - 1)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      <!-- 加载更多 -->
+      <div class="load-more-area" v-if="mode==='normal'">
+        <button v-if="hasMore" class="btn outline load-more-btn" @click="loadMore">
+          加载更多 ({{ questions.length }}/{{ totalPages * 20 }})
         </button>
-        <template v-for="p in visiblePages" :key="p">
-          <button v-if="p !== '...'" :class="{ active: p === page }" @click="loadQuestions(p)">{{ p }}</button>
-          <span v-else class="pagination-ellipsis">...</span>
-        </template>
-        <button :disabled="page >= totalPages" @click="loadQuestions(page + 1)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
+        <div v-else class="load-more-done">已加载全部 {{ questions.length }} 题</div>
       </div>
+      </div><!-- /列表模式 -->
     </div>
 
     <!-- ==================== 统计页 ==================== -->
