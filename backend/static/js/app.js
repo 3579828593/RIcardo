@@ -893,3 +893,10 @@ createApp({
     };
   }
 }).mount('#app');
+
+// Vue 挂载后移除骨架屏（Vue 3 mount 不清空原有子元素，骨架屏需手动移除）
+var __sk = document.getElementById('app-skeleton');
+if (__sk) {
+  __sk.style.opacity = '0';
+  setTimeout(function() { __sk.remove(); }, 300);
+}
