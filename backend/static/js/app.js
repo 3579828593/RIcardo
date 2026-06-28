@@ -146,12 +146,26 @@ createApp({
     // ========== 计算属性 ==========
     const themeLabel = computed(() => theme.value === 'dark' ? 'LIGHT' : 'DARK');
 
-    const progressPercent = computed(() => {
+    // 单题模式进度：基于 doneSet 与 allQuestions（当前筛选集）
+    // 只统计在当前 allQuestions 中且在 doneSet 中的题数，避免筛选后溢出
+    const singleDoneCount = computed(() => {
       if (!allQuestions.value.length) return 0;
-      return Math.round((doneSet.value.size / allQuestions.value.length) * 100);
+      return allQuestions.value.filter(q => doneSet.value.has(q.id)).length;
     });
-    const doneCount = computed(() => doneSet.value.size);
-    const totalCount = computed(() => allQuestions.value.length);
+    const progressPercent = computed(() => {
+      if (singleMode.value) {
+        // 单题模式：基于当前筛选集
+        if (!allQuestions.value.length) return 0;
+        return Math.round((singleDoneCount.value / allQuestions.value.length) * 100);
+      }
+      // 列表模式：基于服务端统计
+      const answered = stats.value.answered_questions || 0;
+      const total = stats.value.total_questions || 0;
+      if (!total) return 0;
+      return Math.round((answered / total) * 100);
+    });
+    const doneCount = computed(() => singleMode.value ? singleDoneCount.value : (stats.value.answered_questions || 0));
+    const totalCount = computed(() => singleMode.value ? allQuestions.value.length : (stats.value.total_questions || 0));
 
     const maxTypeCount = computed(() => {
       if (!stats.value.type_distribution) return 1;
@@ -640,9 +654,15 @@ createApp({
       Object.keys(showExplanations).forEach(k => delete showExplanations[k]);
       doneSet.value = new Set();
       cursor.value = 0;
+      allQuestions.value = [];
+      reviewMode.value = false;
+      reviewQueue.value = [];
+      reviewIndex.value = 0;
       localStorage.removeItem(STORAGE_KEY);
       page.value = 1;
-      loadQuestions(1);
+      // 清除后重新加载单题模式题目
+      singleMode.value = true;
+      loadAllForSingleMode();
       showToast('答题记录已清除', 'info');
     };
 
@@ -750,11 +770,11 @@ createApp({
           showToast('暂无错题可复习', 'info');
           return;
         }
-        reviewQueue.value = data.items;
+        reviewQueue.value = [...data.items];  // 独立副本，避免与 allQuestions 共享引用
         reviewIndex.value = 0;
         reviewMode.value = true;
         singleMode.value = true;
-        allQuestions.value = data.items;
+        allQuestions.value = [...data.items];  // 独立副本
         cursor.value = 0;
         prepareQuestionState(allQuestions.value);
         activeTab.value = 'quiz';
@@ -776,12 +796,15 @@ createApp({
         const q = reviewQueue.value.splice(reviewIndex.value, 1)[0];
         reviewQueue.value.push(q);
         showToast('稍后再练', 'info');
+        // 同步 allQuestions 以保持 currentQuestion 正确
+        allQuestions.value = [...reviewQueue.value];
       } else if (rating === 'fuzzy') {
         showToast('标记为模糊', 'info');
         reviewIndex.value++;
       } else if (rating === 'mastered') {
         // 从队列移除
         reviewQueue.value.splice(reviewIndex.value, 1);
+        allQuestions.value = [...reviewQueue.value];
         showToast('已掌握！', 'success');
       }
 
@@ -790,13 +813,12 @@ createApp({
           showToast('全部错题已复习完！', 'success');
           reviewMode.value = false;
           singleMode.value = false;
-          loadQuestions(1);
+          loadAllForSingleMode();
         } else {
           reviewIndex.value = 0;
         }
-      } else {
-        cursor.value = reviewIndex.value;
       }
+      cursor.value = reviewIndex.value;
     };
 
     const exitReview = () => {
