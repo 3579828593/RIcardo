@@ -164,6 +164,14 @@ def api_random():
     return jsonify({"items": items})
 
 
+@app.route("/api/chapters", methods=["GET"])
+def api_chapters():
+    """返回各课程实际包含的章节列表"""
+    course = request.args.get("course")
+    result = db.get_chapters(course)
+    return jsonify(result)
+
+
 @app.route("/api/questions/<int:qid>", methods=["GET"])
 def api_question(qid):
     q = db.get_question(qid)

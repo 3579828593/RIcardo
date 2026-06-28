@@ -8,7 +8,7 @@
 //   - 其他导航请求: NetworkFirst, 离线回退到缓存的首页
 // ============================================================
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const STATIC_CACHE = `quiz-static-${CACHE_VERSION}`;
 const API_CACHE = `quiz-api-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `quiz-runtime-${CACHE_VERSION}`;

@@ -278,8 +278,13 @@ input, select, textarea { font-family: inherit; }
   padding: 16px; margin-bottom: 12px;
   box-shadow: var(--shadow);
   transition: box-shadow 0.2s, var(--transition-theme);
+  animation: card-fade-in 0.3s ease-out;
 }
 .question-card:hover { box-shadow: var(--shadow-hover); }
+@keyframes card-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .question-header {
   display: flex; justify-content: space-between; align-items: flex-start;
   margin-bottom: 10px; gap: 8px;
@@ -302,7 +307,7 @@ input, select, textarea { font-family: inherit; }
 .options { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
 .option {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
   cursor: pointer; background: var(--card);
   transition: all 0.2s ease; position: relative; user-select: none;
 }
@@ -460,6 +465,7 @@ input, select, textarea { font-family: inherit; }
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 14px; margin-bottom: 10px;
   box-shadow: var(--shadow); transition: var(--transition-theme);
+  animation: card-fade-in 0.3s ease-out;
 }
 .list-card-header {
   display: flex; justify-content: space-between; align-items: center;
@@ -480,6 +486,45 @@ input, select, textarea { font-family: inherit; }
   background: var(--error-light); color: var(--error); font-weight: 600;
   transition: background-color 0.3s, color 0.3s;
 }
+
+/* ========== 骨架屏 ========== */
+.skeleton {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  position: relative;
+  overflow: hidden;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
+  animation: skeleton-shimmer 1.5s infinite;
+}
+[data-theme="dark"] .skeleton::after {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+}
+@keyframes skeleton-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.skeleton-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+.skeleton-line {
+  height: 14px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+}
+.skeleton-line:last-child { margin-bottom: 0; }
+.skeleton-line.short { width: 40%; }
+.skeleton-line.medium { width: 70%; }
+.skeleton-line.long { width: 100%; }
 
 /* ========== 空状态 ========== */
 .empty-state {
@@ -605,6 +650,14 @@ input, select, textarea { font-family: inherit; }
           <div class="progress-bar-fill" :style="{ width: progressPercent + '%' }"></div>
         </div>
         <span class="progress-bar-text">已答 {{ stats.answered_questions || 0 }} / 共 {{ stats.total_questions || 0 }} 题</span>
+      </div>
+
+      <!-- 骨架屏 -->
+      <div v-if="loading && questions.length === 0" class="skeleton-card" v-for="i in 3" :key="'sk-'+i">
+        <div class="skeleton skeleton-line short"></div>
+        <div class="skeleton skeleton-line long"></div>
+        <div class="skeleton skeleton-line long"></div>
+        <div class="skeleton skeleton-line medium"></div>
       </div>
 
       <!-- 题目列表 -->
@@ -877,6 +930,12 @@ input, select, textarea { font-family: inherit; }
     </div>
 
   </div><!-- /main-content -->
+
+  <!-- 快捷键提示 -->
+  <div v-if="activeTab==='quiz' && questions.length > 0 && !results[questions[0]?.id]" 
+       style="text-align:center;padding:4px 0 8px;font-size:12px;color:var(--muted);opacity:0.7;">
+    快捷键: 1-9 选择选项 &middot; Enter 提交
+  </div>
 
   <!-- Toast 通知 -->
   <div class="toast-container">

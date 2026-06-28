@@ -14,13 +14,15 @@ class QuizDatabase:
         self.db_path = db_path
         self.backup_dir = backup_dir or str(Path(db_path).parent / "backups")
         os.makedirs(self.backup_dir, exist_ok=True)
+        self._long_lived_conn = None
         self._init_db()
 
     def _conn(self):
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        return conn
+        if self._long_lived_conn is None:
+            self._long_lived_conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._long_lived_conn.row_factory = sqlite3.Row
+            self._long_lived_conn.execute("PRAGMA journal_mode=WAL")
+        return self._long_lived_conn
 
     @contextmanager
     def connection(self):
@@ -31,8 +33,6 @@ class QuizDatabase:
         except Exception:
             conn.rollback()
             raise
-        finally:
-            conn.close()
 
     def _init_db(self):
         with self.connection() as conn:
@@ -154,12 +154,15 @@ class QuizDatabase:
             params.append(knowledge)
         if keyword:
             where.append("stem LIKE ?")
-            params.append(f"%{keyword}%")
+            # 转义 LIKE 通配符
+            escaped = keyword.replace("%", "\\%").replace("_", "\\_")
+            params.append(f"%{escaped}%")
 
         clause = " AND ".join(where)
         offset = (page - 1) * page_size
 
         with self.connection() as conn:
+            conn.execute("PRAGMA case_sensitive_like = OFF")
             total = conn.execute(f"SELECT COUNT(*) FROM questions WHERE {clause}", params).fetchone()[0]
             rows = conn.execute(
                 f"SELECT * FROM questions WHERE {clause} ORDER BY id LIMIT ? OFFSET ?",
@@ -175,6 +178,26 @@ class QuizDatabase:
         with self.connection() as conn:
             row = conn.execute("SELECT * FROM questions WHERE id = ?", (qid,)).fetchone()
         return self._row_to_dict(row) if row else None
+
+    def get_chapters(self, course: str = None) -> dict:
+        """获取各课程（或指定课程）的章节列表"""
+        with self.connection() as conn:
+            if course:
+                rows = conn.execute(
+                    "SELECT DISTINCT chapter FROM questions WHERE course = ? ORDER BY chapter",
+                    (course,)
+                ).fetchall()
+                return {"course": course, "chapters": [r[0] for r in rows]}
+            else:
+                rows = conn.execute(
+                    "SELECT course, GROUP_CONCAT(DISTINCT chapter ORDER BY chapter) as chapters "
+                    "FROM questions GROUP BY course"
+                ).fetchall()
+                result = {}
+                for r in rows:
+                    chapters = [int(x) for x in r[1].split(",")] if r[1] else []
+                    result[r[0]] = chapters
+                return result
 
     def get_random_questions(self, course: str = None, chapter: int = None, qtype: str = None, limit: int = 20) -> list:
         where = ["1=1"]
