@@ -44,7 +44,7 @@ createApp({
     const chapters = ref([]);
 
     // ========== 计算属性 ==========
-    const themeLabel = computed(() => theme.value === 'dark' ? '切换到亮色模式' : '切换到暗色模式');
+    const themeLabel = computed(() => theme.value === 'dark' ? 'LIGHT' : 'DARK');
 
     const progressPercent = computed(() => {
       if (!stats.value.total_questions) return 0;

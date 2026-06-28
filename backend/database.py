@@ -24,6 +24,18 @@ class QuizDatabase:
             self._long_lived_conn.execute("PRAGMA journal_mode=WAL")
         return self._long_lived_conn
 
+    def close(self):
+        """关闭长连接，释放数据库文件锁"""
+        if self._long_lived_conn is not None:
+            try:
+                self._long_lived_conn.close()
+            except Exception:
+                pass
+            self._long_lived_conn = None
+
+    def __del__(self):
+        self.close()
+
     @contextmanager
     def connection(self):
         conn = self._conn()

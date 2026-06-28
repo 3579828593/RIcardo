@@ -51,6 +51,7 @@ class ApiRegressionTest(unittest.TestCase):
 
     def tearDown(self):
         app_module.db = self.old_db
+        self.db.close()
         self.tmp.cleanup()
 
     def test_questions_api_uses_new_schema_without_legacy_wrapper(self):
@@ -78,8 +79,9 @@ class ApiRegressionTest(unittest.TestCase):
         resp = self.client.get("/")
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertIn("期末冲刺刷题系统 v2.1", html)
-        self.assertIn("{{ isFav(q.id) ? '已收藏' : '收藏' }}", html)
+        self.assertIn("期末冲刺刷题系统", html)
+        # Vue mustache 语法应保留（未被 Jinja 解析）
+        self.assertIn("{{ q.stem }}", html)
 
     def test_export_json_supports_filename_without_parent_directory(self):
         cwd = os.getcwd()

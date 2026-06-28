@@ -1,0 +1,25 @@
+# Render 部署配置文件
+# 文档: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: quiz-system
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt && python backend/render_init.py
+    startCommand: cd backend && gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: SECRET_KEY
+        generateValue: true
+      - key: QUIZ_ADMIN_TOKEN
+        generateValue: true
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATA_DIR
+        value: /opt/render/project/src/backend
+    healthCheckPath: /api/stats
+    autoDeploy: true
+    disk:
+      name: quiz-data
+      mountPath: /opt/render/project/src/backend/data
+      sizeGB: 1

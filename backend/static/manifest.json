@@ -4,8 +4,8 @@
   "description": "天气分析与预报方法 + 大学英语 · 期末冲刺刷题 · 支持离线使用",
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#257da9",
-  "background_color": "#f0f4f8",
+  "theme_color": "#111111",
+  "background_color": "#c5c9c9",
   "orientation": "portrait-primary",
   "icons": [
     {
