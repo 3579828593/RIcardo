@@ -12,13 +12,14 @@ from hmac import compare_digest
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, jsonify, request, render_template, send_from_directory
+from flask import Flask, jsonify, request, render_template, send_from_directory, Response
 
 BASE_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(BASE_DIR))
 
 from config import load_config
 from database import QuizDatabase
+from lite import render_lite_page
 
 app = Flask(__name__, template_folder=str(BASE_DIR / "templates"), static_folder=str(BASE_DIR / "static"))
 # 避免 Flask/Jinja 解析 Vue 的 {{ }} 插值表达式。
@@ -134,6 +135,31 @@ def _check_answer(qtype: str, user_answer, correct_answer) -> bool:
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/lite")
+def lite():
+    """轻量版 - 服务端渲染，不依赖 Vue，兼容微信所有内核"""
+    page = request.args.get("page", 1, type=int)
+    if page < 1:
+        page = 1
+    page_size = 1  # 轻量版每页1题，减少 HTML 体积
+    result = db.search_questions(page=page, page_size=page_size)
+    items = result.get("items", [])
+    total = result.get("total", 0)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    question = items[0] if items else None
+
+    try:
+        stats = db.get_stats()
+    except Exception:
+        stats = None
+
+    html = render_lite_page(question, page, total_pages, stats)
+    resp = Response(html, content_type="text/html; charset=utf-8")
+    # 允许浏览器缓存 HTML 5 分钟，二次访问秒开
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    return resp
 
 
 @app.route("/sw.js")
