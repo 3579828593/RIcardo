@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>期末冲刺刷题系统</title>
+<!-- PWA 相关配置 -->
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#257da9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="期末刷题">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.jpg">
+<script src="/static/vendor/vue.global.prod.js"></script>
+<style>
+/* ========== CSS 变量 / 色彩系统 ========== */
+:root {
+  --primary: #257da9;
+  --primary-light: #e0f0f8;
+  --primary-rgb: 37,125,169;
+  --accent: #c56343;
+  --accent-light: #fdf0ec;
+  --accent-rgb: 197,99,67;
+  --bg: #f0f4f8;
+  --bg-secondary: #e8edf2;
+  --card: #ffffff;
+  --text: #1e293b;
+  --text-secondary: #475569;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --success: #16a34a;
+  --success-light: #dcfce7;
+  --success-rgb: 22,163,74;
+  --error: #dc2626;
+  --error-light: #fee2e2;
+  --error-rgb: 220,38,38;
+  --warning: #d97706;
+  --warning-light: #fef3c7;
+  --explanation-bg: #fffbeb;
+  --explanation-border: #f59e0b;
+  --shadow: 0 2px 8px rgba(0,0,0,0.06);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,0.10);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --nav-height: 56px;
+  --header-height: 48px;
+  --progress-bar-height: 3px;
+  --transition-theme: background-color 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s;
+  --z-nav: 100;
+  --z-toast: 200;
+  --z-loading: 300;
+}
+
+[data-theme="dark"] {
+  --primary: #60a5fa;
+  --primary-light: #1e3a5f;
+  --primary-rgb: 96,165,250;
+  --accent: #e08060;
+  --accent-light: #3d2222;
+  --accent-rgb: 224,128,96;
+  --bg: #0f172a;
+  --bg-secondary: #1a2332;
+  --card: #1e293b;
+  --text: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --muted: #94a3b8;
+  --border: #334155;
+  --success: #4ade80;
+  --success-light: #14532d;
+  --success-rgb: 74,222,128;
+  --error: #f87171;
+  --error-light: #450a0a;
+  --error-rgb: 248,113,113;
+  --warning: #fbbf24;
+  --warning-light: #422006;
+  --explanation-bg: #1e293b;
+  --explanation-border: #d97706;
+  --shadow: 0 2px 8px rgba(0,0,0,0.2);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+/* ========== 全局重置 ========== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+  transition: var(--transition-theme);
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(var(--nav-height) + 16px);
+}
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+
+/* ========== 全局加载进度条 (NProgress 风格) ========== */
+.loading-bar {
+  position: fixed; top: 0; left: 0; width: 0; height: var(--progress-bar-height);
+  background: var(--primary); z-index: var(--z-loading);
+  transition: width 0.3s ease;
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.4);
+}
+.loading-bar.active { width: 60%; }
+.loading-bar.done { width: 100%; transition: width 0.15s ease; }
+
+/* ========== Toast 通知 ========== */
+.toast-container {
+  position: fixed; bottom: calc(var(--nav-height) + 16px); right: 16px;
+  z-index: var(--z-toast); display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  padding: 10px 16px; border-radius: var(--radius-sm);
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  font-size: 14px; pointer-events: auto;
+  animation: toast-in 0.3s ease;
+  transition: opacity 0.3s, transform 0.3s;
+}
+.toast.leaving { opacity: 0; transform: translateX(30px); }
+.toast.success { border-left: 3px solid var(--success); }
+.toast.error { border-left: 3px solid var(--error); }
+.toast.info { border-left: 3px solid var(--primary); }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ========== 顶部 Header ========== */
+.app-header {
+  position: sticky; top: 0; z-index: 90;
+  height: var(--header-height);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px;
+  transition: var(--transition-theme);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.app-header h1 {
+  font-size: 17px; font-weight: 700; color: var(--primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color 0.3s;
+}
+.theme-toggle {
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--bg);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s; flex-shrink: 0;
+}
+.theme-toggle:hover { border-color: var(--primary); background: var(--primary-light); }
+.theme-toggle svg { width: 20px; height: 20px; }
+
+/* ========== 主容器 ========== */
+.main-content {
+  max-width: 760px; margin: 0 auto; padding: 16px;
+}
+
+/* ========== 底部 Tab 导航 ========== */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  height: var(--nav-height);
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  display: flex; z-index: var(--z-nav);
+  transition: var(--transition-theme);
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.06);
+}
+.nav-tab {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 3px;
+  cursor: pointer; text-decoration: none;
+  color: var(--muted); font-size: 11px;
+  transition: color 0.2s; min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.nav-tab.active { color: var(--primary); }
+.nav-tab svg { width: 22px; height: 22px; transition: transform 0.2s; }
+.nav-tab.active svg { transform: scale(1.1); }
+.nav-tab::after {
+  content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 0; height: 2px; background: var(--primary); border-radius: 1px;
+  transition: width 0.2s;
+}
+.nav-tab.active::after { width: 32px; }
+.nav-tab { position: relative; }
+
+/* ========== 筛选栏 ========== */
+.filter-bar {
+  background: var(--card); border-radius: var(--radius);
+  padding: 12px; margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  transition: var(--transition-theme);
+}
+.filter-row {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.filter-row + .filter-row { margin-top: 8px; }
+.filter-bar select,
+.filter-bar input {
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--card); color: var(--text); font-size: 14px;
+  transition: border-color 0.2s, background-color 0.3s, color 0.3s;
+  min-height: 36px;
+}
+.filter-bar select:focus,
+.filter-bar input:focus {
+  outline: none; border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.15);
+}
+.filter-bar input { flex: 1; min-width: 120px; }
+.filter-bar select { min-width: 100px; }
+.filter-actions {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-left: auto;
+}
+.btn {
+  padding: 8px 14px; border: none; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 13px; font-weight: 500;
+  background: var(--primary); color: #fff;
+  transition: all 0.2s; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.btn:hover { filter: brightness(1.1); }
+.btn:active { transform: scale(0.97); }
+.btn.secondary { background: var(--muted); }
+.btn.secondary:hover { filter: brightness(1.15); }
+.btn.danger { background: var(--error); }
+.btn.outline {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.btn.outline:hover { border-color: var(--primary); color: var(--primary); }
+.btn.small { padding: 6px 12px; font-size: 12px; }
+.btn.mode-btn { padding: 6px 12px; font-size: 12px; border-radius: 20px; }
+.btn.mode-btn.active {
+  background: var(--primary); color: #fff;
+  box-shadow: 0 2px 6px rgba(var(--primary-rgb), 0.3);
+}
+.btn.mode-btn:not(.active) {
+  background: var(--bg-secondary); color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* 更多筛选展开区 */
+.filter-expand {
+  overflow: hidden; max-height: 0; opacity: 0;
+  transition: max-height 0.3s ease, opacity 0.2s, margin 0.3s;
+  margin-top: 0;
+}
+.filter-expand.open {
+  max-height: 200px; opacity: 1; margin-top: 8px;
+}
+
+/* ========== 进度条 ========== */
+.progress-bar-wrapper {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+}
+.progress-bar-track {
+  flex: 1; height: 4px; background: var(--bg-secondary);
+  border-radius: 2px; overflow: hidden; transition: background-color 0.3s;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--primary); border-radius: 2px;
+  transition: width 0.4s ease; min-width: 0;
+}
+.progress-bar-text {
+  font-size: 12px; color: var(--muted); white-space: nowrap;
+  transition: color 0.3s;
+}
+
+/* ========== 题目卡片 ========== */
+.question-card {
+  background: var(--card); border-radius: var(--radius);
+  padding: 16px; margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.2s, var(--transition-theme);
+}
+.question-card:hover { box-shadow: var(--shadow-hover); }
+.question-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 10px; gap: 8px;
+}
+.question-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.question-type {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 12px; font-weight: 600;
+  background: var(--primary-light); color: var(--primary);
+  transition: background-color 0.3s, color 0.3s;
+}
+.question-id {
+  font-size: 12px; color: var(--muted); transition: color 0.3s;
+}
+.question-stem {
+  font-size: 15px; line-height: 1.7; margin-bottom: 12px; word-break: break-word;
+}
+
+/* 选项 */
+.options { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.option {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; background: var(--card);
+  transition: all 0.2s ease; position: relative; user-select: none;
+}
+.option:hover {
+  border-color: rgba(var(--primary-rgb), 0.5);
+  background: var(--primary-light);
+}
+.option.selected {
+  border-color: var(--primary); border-left-width: 4px;
+  background: var(--primary-light);
+}
+.option.correct-answer {
+  border-color: var(--success) !important; border-left-width: 4px;
+  background: var(--success-light) !important;
+}
+.option.wrong-selected {
+  border-color: var(--error) !important; border-left-width: 4px;
+  background: var(--error-light) !important;
+}
+.option input[type="radio"],
+.option input[type="checkbox"] {
+  cursor: pointer; accent-color: var(--primary);
+  width: 16px; height: 16px; flex-shrink: 0;
+}
+.option-label { font-weight: 600; min-width: 22px; color: var(--text-secondary); }
+.option-text { flex: 1; }
+.option-icon {
+  width: 20px; height: 20px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.option-icon svg { width: 16px; height: 16px; }
+
+/* 填空/简答输入 */
+.fill-input {
+  width: 100%; padding: 10px 14px;
+  border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--card); color: var(--text); font-size: 14px;
+  transition: border-color 0.2s, background-color 0.3s, color 0.3s;
+}
+.fill-input:focus {
+  outline: none; border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.15);
+}
+
+/* 操作按钮 */
+.question-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+
+/* 收藏按钮 */
+.fav-btn {
+  width: 32px; height: 32px; border: none; background: none;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); transition: all 0.2s; flex-shrink: 0;
+  padding: 0; border-radius: 50%;
+}
+.fav-btn:hover { background: var(--error-light); }
+.fav-btn.active { color: var(--error); }
+.fav-btn svg { width: 18px; height: 18px; }
+
+/* 反馈 */
+.feedback {
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  margin-top: 10px; font-weight: 500; font-size: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.feedback.correct { background: var(--success-light); color: var(--success); }
+.feedback.wrong { background: var(--error-light); color: var(--error); }
+.feedback-icon { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* 解析区 */
+.explanation {
+  margin-top: 10px; padding: 12px 14px;
+  background: var(--explanation-bg);
+  border-left: 3px solid var(--explanation-border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 14px; line-height: 1.7;
+  transition: background-color 0.3s, border-color 0.3s;
+}
+.explanation-title { font-weight: 600; margin-bottom: 4px; }
+.explanation-knowledge {
+  margin-top: 6px; font-size: 12px; color: var(--muted);
+  padding-top: 6px; border-top: 1px dashed var(--border);
+  transition: color 0.3s, border-color 0.3s;
+}
+
+/* ========== 统计页 ========== */
+.stats-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px; margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px; text-align: center;
+  box-shadow: var(--shadow); transition: var(--transition-theme);
+}
+.stat-value {
+  font-size: 26px; font-weight: 700; color: var(--primary);
+  line-height: 1.2; transition: color 0.3s;
+}
+.stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; transition: color 0.3s; }
+
+/* 环形进度条 */
+.ring-progress-wrapper {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 20px 0;
+}
+.ring-progress {
+  width: 120px; height: 120px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.ring-progress-inner {
+  width: 90px; height: 90px; border-radius: 50%;
+  background: var(--card); display: flex; align-items: center; justify-content: center;
+  flex-direction: column; z-index: 1;
+  box-shadow: inset 0 0 4px rgba(0,0,0,0.05);
+  transition: background-color 0.3s;
+}
+.ring-progress-value { font-size: 24px; font-weight: 700; color: var(--primary); transition: color 0.3s; }
+.ring-progress-label { font-size: 11px; color: var(--muted); transition: color 0.3s; }
+
+/* 条形图 */
+.bar-chart-section {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+  box-shadow: var(--shadow); transition: var(--transition-theme);
+}
+.bar-chart-title {
+  font-size: 15px; font-weight: 600; margin-bottom: 12px;
+  color: var(--text); transition: color 0.3s;
+}
+.bar-item { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.bar-item:last-child { margin-bottom: 0; }
+.bar-label { font-size: 13px; min-width: 56px; color: var(--text-secondary); text-align: right; transition: color 0.3s; }
+.bar-track {
+  flex: 1; height: 20px; background: var(--bg-secondary);
+  border-radius: 10px; overflow: hidden; transition: background-color 0.3s;
+}
+.bar-fill {
+  height: 100%; border-radius: 10px;
+  transition: width 0.6s ease;
+  min-width: 0;
+}
+.bar-value { font-size: 13px; font-weight: 600; min-width: 36px; color: var(--text-secondary); transition: color 0.3s; }
+
+/* 条形图颜色 */
+.bar-color-1 { background: #3b82f6; }
+.bar-color-2 { background: #8b5cf6; }
+.bar-color-3 { background: #06b6d4; }
+.bar-color-4 { background: #f59e0b; }
+.bar-color-5 { background: #ef4444; }
+.bar-color-6 { background: #10b981; }
+
+/* ========== 错题 / 收藏页 ========== */
+.list-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px; margin-bottom: 10px;
+  box-shadow: var(--shadow); transition: var(--transition-theme);
+}
+.list-card-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px; gap: 8px;
+}
+.list-card-meta { display: flex; align-items: center; gap: 8px; }
+.list-card-stem {
+  font-size: 14px; line-height: 1.6; word-break: break-word;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; margin-bottom: 8px;
+}
+.list-card-info {
+  font-size: 12px; color: var(--muted); transition: color 0.3s;
+}
+.list-card-actions { display: flex; gap: 6px; align-items: center; }
+.wrong-count-badge {
+  font-size: 11px; padding: 2px 6px; border-radius: 10px;
+  background: var(--error-light); color: var(--error); font-weight: 600;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* ========== 空状态 ========== */
+.empty-state {
+  text-align: center; padding: 48px 24px;
+}
+.empty-state svg { width: 100px; height: 100px; margin-bottom: 16px; opacity: 0.4; }
+.empty-state-title { font-size: 16px; font-weight: 600; color: var(--muted); margin-bottom: 6px; transition: color 0.3s; }
+.empty-state-desc { font-size: 13px; color: var(--muted); transition: color 0.3s; }
+
+/* ========== 分页器 ========== */
+.pagination {
+  display: flex; justify-content: center; align-items: center; gap: 6px;
+  margin-top: 16px; padding: 8px 0;
+}
+.pagination button {
+  min-width: 36px; height: 36px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--card);
+  color: var(--text); cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.pagination button:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pagination button.active {
+  background: var(--primary); color: #fff; border-color: var(--primary);
+}
+.pagination-ellipsis { color: var(--muted); font-size: 13px; padding: 0 4px; }
+
+/* ========== 页面标题 ========== */
+.page-title {
+  font-size: 18px; font-weight: 700; margin-bottom: 14px;
+  color: var(--text); transition: color 0.3s;
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 480px) {
+  .main-content { padding: 12px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .filter-row { gap: 6px; }
+  .filter-bar select { min-width: 80px; }
+  .question-card { padding: 14px; }
+  .question-stem { font-size: 14px; }
+  .option { padding: 8px 12px; }
+  .stat-value { font-size: 22px; }
+  .bar-label { min-width: 48px; font-size: 12px; }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- 全局加载进度条 -->
+  <div class="loading-bar" :class="{ active: loading, done: loadingDone }" :key="loadingKey"></div>
+
+  <!-- 顶部 Header -->
+  <header class="app-header">
+    <h1>期末冲刺刷题</h1>
+    <button class="theme-toggle" @click="toggleTheme" :title="themeLabel">
+      <!-- 太阳图标 (暗色模式下显示，切换到亮色) -->
+      <svg v-if="theme==='dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"></circle>
+        <line x1="12" y1="1" x2="12" y2="3"></line>
+        <line x1="12" y1="21" x2="12" y2="23"></line>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+        <line x1="1" y1="12" x2="3" y2="12"></line>
+        <line x1="21" y1="12" x2="23" y2="12"></line>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+      </svg>
+      <!-- 月亮图标 (亮色模式下显示，切换到暗色) -->
+      <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+    </button>
+  </header>
+
+  <!-- 主内容区 -->
+  <div class="main-content">
+
+    <!-- ==================== 刷题页 ==================== -->
+    <div v-if="activeTab==='quiz'">
+
+      <!-- 筛选栏 -->
+      <div class="filter-bar">
+        <div class="filter-row">
+          <select v-model="filter.course" @change="onFilterChange()">
+            <option value="">全部课程</option>
+            <option value="weather">天气分析与预报方法</option>
+            <option value="english">大学英语II</option>
+          </select>
+          <select v-model="filter.type" @change="onFilterChange()">
+            <option value="">全部题型</option>
+            <option value="single">单选题</option>
+            <option value="multiple">多选题</option>
+            <option value="true_false">判断题</option>
+            <option value="fill_blank">填空题</option>
+            <option value="short_answer">简答题</option>
+          </select>
+          <div class="filter-actions">
+            <button class="btn mode-btn" :class="{active: mode==='normal'}" @click="switchMode('normal')">顺序</button>
+            <button class="btn mode-btn" :class="{active: mode==='random'}" @click="switchMode('random')">随机</button>
+            <button class="btn small outline" @click="showMoreFilter=!showMoreFilter">
+              {{ showMoreFilter ? '收起' : '更多筛选' }}
+            </button>
+          </div>
+        </div>
+        <div class="filter-expand" :class="{open: showMoreFilter}">
+          <div class="filter-row">
+            <select v-model="filter.chapter" @change="onFilterChange()">
+              <option value="">全部章节</option>
+              <option v-for="c in chapters" :key="c" :value="c">第 {{ c }} 章</option>
+            </select>
+            <input v-model="filter.keyword" @keyup.enter="onFilterChange()" placeholder="关键词搜索">
+            <button class="btn small" @click="onFilterChange()">搜索</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 进度指示器 -->
+      <div class="progress-bar-wrapper" v-if="questions.length > 0 || mode==='normal'">
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" :style="{ width: progressPercent + '%' }"></div>
+        </div>
+        <span class="progress-bar-text">已答 {{ stats.answered_questions || 0 }} / 共 {{ stats.total_questions || 0 }} 题</span>
+      </div>
+
+      <!-- 题目列表 -->
+      <div v-if="questions.length === 0 && !loading" class="empty-state">
+        <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="20" y="20" width="80" height="80" rx="12" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+          <line x1="40" y1="50" x2="80" y2="50" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+          <line x1="40" y1="65" x2="70" y2="65" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+          <line x1="40" y1="80" x2="60" y2="80" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+          <circle cx="85" cy="85" r="18" fill="currentColor" opacity="0.1"/>
+          <text x="85" y="90" text-anchor="middle" font-size="20" fill="currentColor" opacity="0.4">?</text>
+        </svg>
+        <div class="empty-state-title">暂无匹配的题目</div>
+        <div class="empty-state-desc">试试调整筛选条件</div>
+      </div>
+
+      <div v-for="q in questions" :key="q.id" class="question-card">
+        <div class="question-header">
+          <div class="question-meta">
+            <span class="question-type">{{ typeLabel(q.type) }}</span>
+            <span class="question-id">#{{ q.id }} · {{ courseLabel(q.course) }} · 第{{ q.chapter }}章</span>
+          </div>
+          <button class="fav-btn" :class="{active: isFav(q.id)}" @click="toggleFav(q)" :title="isFav(q.id)?'取消收藏':'收藏'">
+            <svg viewBox="0 0 24 24" :fill="isFav(q.id)?'currentColor':'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="question-stem">{{ q.stem }}</div>
+
+        <!-- 单选 / 判断 -->
+        <div v-if="q.type==='single' || q.type==='true_false'" class="options">
+          <label v-for="(text,key) in q.options" :key="key"
+                 class="option"
+                 :class="{
+                   selected: userAnswers[q.id]===key && !results[q.id],
+                   'correct-answer': results[q.id] && isCorrectOption(q, key),
+                   'wrong-selected': results[q.id] && userAnswers[q.id]===key && !isCorrectOption(q, key)
+                 }"
+                 @click.prevent="selectOption(q, key)">
+            <span class="option-label">{{ key }}.</span>
+            <span class="option-text">{{ text }}</span>
+            <span v-if="results[q.id] && isCorrectOption(q, key)" class="option-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
+            <span v-if="results[q.id] && userAnswers[q.id]===key && !isCorrectOption(q, key)" class="option-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </span>
+          </label>
+        </div>
+
+        <!-- 多选 -->
+        <div v-else-if="q.type==='multiple'" class="options">
+          <label v-for="(text,key) in q.options" :key="key"
+                 class="option"
+                 :class="{
+                   selected: (userAnswers[q.id]||[]).includes(key) && !results[q.id],
+                   'correct-answer': results[q.id] && isCorrectOption(q, key),
+                   'wrong-selected': results[q.id] && (userAnswers[q.id]||[]).includes(key) && !isCorrectOption(q, key)
+                 }"
+                 @click.prevent="toggleMultipleOption(q, key)">
+            <span class="option-label">{{ key }}.</span>
+            <span class="option-text">{{ text }}</span>
+            <span v-if="results[q.id] && isCorrectOption(q, key)" class="option-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
+            <span v-if="results[q.id] && (userAnswers[q.id]||[]).includes(key) && !isCorrectOption(q, key)" class="option-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </span>
+          </label>
+        </div>
+
+        <!-- 填空 / 简答 -->
+        <div v-else>
+          <input class="fill-input" v-model="userAnswers[q.id]" :placeholder="q.type==='fill_blank'?'请填写答案':'请简述答案'" :disabled="results[q.id]">
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="question-actions" v-if="!results[q.id]">
+          <button class="btn" @click="submitAnswer(q)">提交答案</button>
+          <button class="btn outline" @click="toggleExplanation(q.id)">查看解析</button>
+        </div>
+
+        <!-- 提交反馈 -->
+        <div v-if="results[q.id]" class="feedback" :class="results[q.id].correct?'correct':'wrong'">
+          <span v-if="results[q.id].correct" class="feedback-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+          <span v-else class="feedback-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </span>
+          <span v-if="results[q.id].correct">回答正确</span>
+          <span v-else>回答错误，正确答案：{{ formatAnswer(q.answer) }}</span>
+        </div>
+
+        <!-- 解析区 -->
+        <div v-if="showExplanations[q.id] || (results[q.id] && !results[q.id].correct)" class="explanation">
+          <div class="explanation-title">解析</div>
+          <div>{{ q.explanation || '暂无解析' }}</div>
+          <div v-if="q.knowledge" class="explanation-knowledge">知识点：{{ q.knowledge }}</div>
+        </div>
+      </div>
+
+      <!-- 分页 -->
+      <div class="pagination" v-if="mode==='normal' && totalPages > 1">
+        <button :disabled="page <= 1" @click="loadQuestions(page - 1)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <template v-for="p in visiblePages" :key="p">
+          <button v-if="p !== '...'" :class="{ active: p === page }" @click="loadQuestions(p)">{{ p }}</button>
+          <span v-else class="pagination-ellipsis">...</span>
+        </template>
+        <button :disabled="page >= totalPages" @click="loadQuestions(page + 1)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== 统计页 ==================== -->
+    <div v-if="activeTab==='stats'">
+      <div class="page-title">学习统计</div>
+
+      <!-- 数据卡片 -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value">{{ stats.total_questions }}</div>
+          <div class="stat-label">总题数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ stats.answered_questions }}</div>
+          <div class="stat-label">已答题</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ (stats.accuracy * 100).toFixed(1) }}%</div>
+          <div class="stat-label">正确率</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--error);">{{ stats.mistake_count }}</div>
+          <div class="stat-label">错题数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--accent);">{{ stats.favorite_count }}</div>
+          <div class="stat-label">收藏数</div>
+        </div>
+      </div>
+
+      <!-- 正确率环形图 -->
+      <div class="bar-chart-section">
+        <div class="ring-progress-wrapper">
+          <div class="ring-progress" :style="{ background: 'conic-gradient(var(--primary) 0% ' + (stats.accuracy * 100) + '%, var(--bg-secondary) ' + (stats.accuracy * 100) + '% 100%)' }">
+            <div class="ring-progress-inner">
+              <div class="ring-progress-value">{{ (stats.accuracy * 100).toFixed(1) }}%</div>
+              <div class="ring-progress-label">正确率</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 题型分布 -->
+      <div class="bar-chart-section" v-if="stats.type_distribution">
+        <div class="bar-chart-title">题型分布</div>
+        <div v-for="(count, type, index) in stats.type_distribution" :key="type" class="bar-item">
+          <span class="bar-label">{{ typeLabel(type) }}</span>
+          <div class="bar-track">
+            <div class="bar-fill" :class="'bar-color-' + (index + 1)" :style="{ width: barWidth(count, maxTypeCount) }"></div>
+          </div>
+          <span class="bar-value">{{ count }}</span>
+        </div>
+      </div>
+
+      <!-- 课程分布 -->
+      <div class="bar-chart-section" v-if="stats.course_distribution">
+        <div class="bar-chart-title">课程分布</div>
+        <div v-for="(count, course, index) in stats.course_distribution" :key="course" class="bar-item">
+          <span class="bar-label">{{ courseLabel(course) }}</span>
+          <div class="bar-track">
+            <div class="bar-fill" :class="'bar-color-' + (index + 1)" :style="{ width: barWidth(count, maxCourseCount) }"></div>
+          </div>
+          <span class="bar-value">{{ count }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 错题页 ==================== -->
+    <div v-if="activeTab==='mistakes'">
+      <div class="page-title">错题本</div>
+
+      <div v-if="mistakes.length === 0 && !loading" class="empty-state">
+        <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="60" cy="60" r="40" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+          <line x1="45" y1="45" x2="75" y2="75" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+          <line x1="75" y1="45" x2="45" y2="75" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+          <circle cx="60" cy="95" r="6" fill="currentColor" opacity="0.2"/>
+        </svg>
+        <div class="empty-state-title">暂无错题</div>
+        <div class="empty-state-desc">继续保持，刷题后将自动记录</div>
+      </div>
+
+      <div v-for="q in mistakes" :key="q.id" class="list-card">
+        <div class="list-card-header">
+          <div class="list-card-meta">
+            <span class="question-type">{{ typeLabel(q.type) }}</span>
+            <span class="question-id">#{{ q.id }}</span>
+          </div>
+          <span class="wrong-count-badge">错 {{ q.wrong_count }} 次</span>
+        </div>
+        <div class="list-card-stem">{{ q.stem }}</div>
+        <div class="list-card-info">{{ q.last_wrong_at || '' }}</div>
+        <div class="list-card-actions" style="margin-top:8px;">
+          <button class="btn small" @click="redoQuestion(q)">重做此题</button>
+        </div>
+      </div>
+
+      <!-- 错题分页 -->
+      <div class="pagination" v-if="mistakeTotalPages > 1">
+        <button :disabled="mistakePage <= 1" @click="loadMistakes(mistakePage - 1)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <template v-for="p in mistakeVisiblePages" :key="p">
+          <button v-if="p !== '...'" :class="{ active: p === mistakePage }" @click="loadMistakes(p)">{{ p }}</button>
+          <span v-else class="pagination-ellipsis">...</span>
+        </template>
+        <button :disabled="mistakePage >= mistakeTotalPages" @click="loadMistakes(mistakePage + 1)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== 收藏页 ==================== -->
+    <div v-if="activeTab==='favorites'">
+      <div class="page-title">我的收藏</div>
+
+      <div v-if="favorites.length === 0 && !loading" class="empty-state">
+        <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M60 100L25 70a25 25 0 0 1 35-35l0 0a25 25 0 0 1 35 35L60 100z" stroke="currentColor" stroke-width="2" opacity="0.3" fill="currentColor" fill-opacity="0.05"/>
+          <line x1="48" y1="50" x2="72" y2="50" stroke="currentColor" stroke-width="2" opacity="0.2"/>
+          <line x1="60" y1="38" x2="60" y2="62" stroke="currentColor" stroke-width="2" opacity="0.2"/>
+        </svg>
+        <div class="empty-state-title">暂无收藏</div>
+        <div class="empty-state-desc">点击题目旁的心形图标即可收藏</div>
+      </div>
+
+      <div v-for="q in favorites" :key="q.id" class="list-card">
+        <div class="list-card-header">
+          <div class="list-card-meta">
+            <span class="question-type">{{ typeLabel(q.type) }}</span>
+            <span class="question-id">#{{ q.id }}</span>
+          </div>
+          <button class="btn small outline" @click="toggleFav(q)">取消收藏</button>
+        </div>
+        <div class="list-card-stem">{{ q.stem }}</div>
+        <div class="list-card-actions" style="margin-top:8px;">
+          <button class="btn small" @click="redoQuestion(q)">去做此题</button>
+        </div>
+      </div>
+
+      <!-- 收藏分页 -->
+      <div class="pagination" v-if="favTotalPages > 1">
+        <button :disabled="favPage <= 1" @click="loadFavorites(favPage - 1)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <template v-for="p in favVisiblePages" :key="p">
+          <button v-if="p !== '...'" :class="{ active: p === favPage }" @click="loadFavorites(p)">{{ p }}</button>
+          <span v-else class="pagination-ellipsis">...</span>
+        </template>
+        <button :disabled="favPage >= favTotalPages" @click="loadFavorites(favPage + 1)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+
+  <!-- Toast 通知 -->
+  <div class="toast-container">
+    <div v-for="t in toasts" :key="t.id" class="toast" :class="[t.type, t.leaving ? 'leaving' : '']">
+      {{ t.message }}
+    </div>
+  </div>
+
+  <!-- 底部 Tab 导航 -->
+  <nav class="bottom-nav">
+    <div class="nav-tab" :class="{ active: activeTab==='quiz' }" @click="switchTab('quiz')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+        <rect x="9" y="3" width="6" height="4" rx="1"/>
+        <path d="M9 14l2 2 4-4"/>
+      </svg>
+      <span>刷题</span>
+    </div>
+    <div class="nav-tab" :class="{ active: activeTab==='stats' }" @click="switchTab('stats')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="20" x2="18" y2="10"/>
+        <line x1="12" y1="20" x2="12" y2="4"/>
+        <line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+      <span>统计</span>
+    </div>
+    <div class="nav-tab" :class="{ active: activeTab==='mistakes' }" @click="switchTab('mistakes')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="15" y1="9" x2="9" y2="15"/>
+        <line x1="9" y1="9" x2="15" y2="15"/>
+      </svg>
+      <span>错题</span>
+    </div>
+    <div class="nav-tab" :class="{ active: activeTab==='favorites' }" @click="switchTab('favorites')">
+      <svg viewBox="0 0 24 24" :fill="activeTab==='favorites'?'currentColor':'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+      </svg>
+      <span>收藏</span>
+    </div>
+  </nav>
+</div>
+
+<script src="/static/js/app.js"></script>
+<!-- Service Worker 注册 (PWA 离线支持) -->
+<script src="/static/js/sw-register.js"></script>
+</body>
+</html>

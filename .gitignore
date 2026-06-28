@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.spec.bak
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# PyInstaller
+*.manifest
+
+# 数据库备份（保留主库，忽略备份）
+backend/data/backups/
+backend/data/*.db-journal
+backend/data/*.db-wal
+backend/data/*.db-shm
+
+# 日志
+backend/logs/
+*.log
+
+# 临时文件
+*.tmp
+*.bak
+*.cache
+
+# 操作系统
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# 打包产物（exe 太大，不走 Git，用 Release 发布）
+dist/
+*.exe
+
+# 敏感配置（如有本地密码覆盖）
+config.local.yaml
+.env

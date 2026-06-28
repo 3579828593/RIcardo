@@ -1,0 +1,14 @@
+services:
+  quiz-app:
+    build: .
+    container_name: quiz-system-v2
+    ports:
+      - "5000:5000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-dev-change-me}
+      - QUIZ_ADMIN_TOKEN=${QUIZ_ADMIN_TOKEN:-local-admin-token}
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+    restart: unless-stopped
