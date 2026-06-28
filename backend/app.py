@@ -5,6 +5,7 @@ import json
 import logging
 import logging.handlers
 import os
+import re
 import sys
 import time
 from hmac import compare_digest
@@ -105,8 +106,19 @@ def _check_answer(qtype: str, user_answer, correct_answer) -> bool:
         ca_bool = str(ca_norm).lower() in ("true", "1", "yes", "对", "正确", "a", "是")
         return ua_bool == ca_bool
     if qtype == "fill_blank":
-        ua = str(user_answer).strip().replace(" ", "").replace("\u3000", "")
-        ca = str(correct_answer[0]).strip().replace(" ", "").replace("\u3000", "") if correct_answer else ""
+        # 支持多空填空：用户答案和正确答案都是列表
+        if isinstance(user_answer, list):
+            if not correct_answer:
+                return False
+            for i, ca in enumerate(correct_answer):
+                ua = re.sub(r'\s+', '', str(user_answer[i])) if i < len(user_answer) else ""
+                ca_clean = re.sub(r'\s+', '', str(ca))
+                if ua != ca_clean:
+                    return False
+            return True
+        # 单空填空
+        ua = re.sub(r'\s+', '', str(user_answer))
+        ca = re.sub(r'\s+', '', str(correct_answer[0])) if correct_answer else ""
         return ua == ca
     if qtype == "short_answer":
         # 简答先按关键词匹配，后续可接入 AI
@@ -292,4 +304,7 @@ def server_error(e):
 
 
 if __name__ == "__main__":
+    # 检测弱默认 admin token
+    if cfg["security"]["admin_enabled"] and cfg["security"].get("admin_token") == "local-admin-token":
+        app.logger.warning("⚠ 使用默认 admin token 'local-admin-token'，请通过环境变量 QUIZ_ADMIN_TOKEN 设置强密码")
     app.run(host=cfg["server"]["host"], port=cfg["server"]["port"], debug=cfg["server"]["debug"])

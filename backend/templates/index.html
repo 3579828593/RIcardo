@@ -657,7 +657,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
   <div class="main-content">
 
     <!-- ==================== 刷题页 ==================== -->
-    <div v-if="activeTab==='quiz'">
+    <div v-show="activeTab==='quiz'">
 
       <!-- 筛选栏 -->
       <div class="filter-bar">
@@ -782,14 +782,31 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         </div>
 
         <!-- 填空 / 简答 -->
+        <div v-else-if="q.type==='fill_blank'">
+          <div v-if="getFillBlanks(q).length > 1">
+            <div v-for="(blank, idx) in getFillBlanks(q)" :key="idx" style="margin-bottom:8px;">
+              <span style="font-size:13px;color:var(--muted-foreground);margin-right:6px;">空 {{idx+1}}:</span>
+              <input class="fill-input" style="display:inline-block;width:auto;min-width:200px;"
+                     :value="(userAnswers[q.id]||[])[idx] || ''"
+                     @input="setFillBlankAnswer(q, idx, $event.target.value)"
+                     :placeholder="'请填写第'+(idx+1)+'空'"
+                     :disabled="results[q.id]">
+            </div>
+          </div>
+          <div v-else>
+            <input class="fill-input" v-model="userAnswers[q.id]" placeholder="请填写答案" :disabled="results[q.id]">
+          </div>
+        </div>
         <div v-else>
-          <input class="fill-input" v-model="userAnswers[q.id]" :placeholder="q.type==='fill_blank'?'请填写答案':'请简述答案'" :disabled="results[q.id]">
+          <input class="fill-input" v-model="userAnswers[q.id]" placeholder="请简述答案" :disabled="results[q.id]">
         </div>
 
         <!-- 操作按钮 -->
         <div class="question-actions" v-if="!results[q.id]">
           <button class="btn" @click="submitAnswer(q)">提交答案</button>
-          <button class="btn outline" @click="toggleExplanation(q.id)">查看解析</button>
+          <button class="btn outline" @click="toggleExplanation(q.id)">
+            {{ showExplanations[q.id] ? '收起解析' : '查看解析' }}
+          </button>
         </div>
 
         <!-- 提交反馈 -->
@@ -828,7 +845,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
     </div>
 
     <!-- ==================== 统计页 ==================== -->
-    <div v-if="activeTab==='stats'">
+    <div v-show="activeTab==='stats'">
       <div class="page-title">学习统计</div>
 
       <!-- 数据卡片 -->
@@ -858,7 +875,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
       <!-- 正确率环形图 -->
       <div class="bar-chart-section">
         <div class="ring-progress-wrapper">
-          <div class="ring-progress" :style="{ background: 'conic-gradient(var(--primary) 0% ' + (stats.accuracy * 100) + '%, var(--bg-secondary) ' + (stats.accuracy * 100) + '% 100%)' }">
+          <div class="ring-progress" :style="{ background: 'conic-gradient(var(--primary) 0% ' + (stats.accuracy * 100) + '%, var(--muted) ' + (stats.accuracy * 100) + '% 100%)' }">
             <div class="ring-progress-inner">
               <div class="ring-progress-value">{{ (stats.accuracy * 100).toFixed(1) }}%</div>
               <div class="ring-progress-label">正确率</div>
@@ -890,11 +907,19 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
           <span class="bar-value">{{ count }}</span>
         </div>
       </div>
+
+      <div style="text-align:center;margin-top:20px;">
+        <button class="btn small outline" @click="clearProgress" style="color:var(--destructive);">清除答题记录</button>
+      </div>
     </div>
 
     <!-- ==================== 错题页 ==================== -->
-    <div v-if="activeTab==='mistakes'">
+    <div v-show="activeTab==='mistakes'">
       <div class="page-title">错题本</div>
+
+      <div style="margin-bottom:12px;" v-if="mistakes.length > 0">
+        <button class="btn" @click="practiceMistakes">只刷错题 ({{ stats.mistake_count || 0 }}题)</button>
+      </div>
 
       <div v-if="mistakes.length === 0 && !loading" class="empty-state">
         <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -938,7 +963,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
     </div>
 
     <!-- ==================== 收藏页 ==================== -->
-    <div v-if="activeTab==='favorites'">
+    <div v-show="activeTab==='favorites'">
       <div class="page-title">我的收藏</div>
 
       <div v-if="favorites.length === 0 && !loading" class="empty-state">
@@ -983,7 +1008,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
   </div><!-- /main-content -->
 
   <!-- 快捷键提示 -->
-  <div v-if="activeTab==='quiz' && questions.length > 0 && !results[questions[0]?.id]"
+  <div v-if="activeTab==='quiz' && questions.length > 0"
        class="shortcut-hint" style="text-align:center;padding:4px 0 8px;">
     快捷键: 1-9 选择选项 &middot; Enter 提交
   </div>

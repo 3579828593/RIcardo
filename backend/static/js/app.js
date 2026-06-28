@@ -43,6 +43,40 @@ createApp({
     const filter = reactive({ course: '', type: '', chapter: '', keyword: '' });
     const chapters = ref([]);
 
+    // ========== localStorage 持久化 ==========
+    const STORAGE_KEY = 'quiz_state_v1';
+    function saveState() {
+      try {
+        const state = {
+          userAnswers: Object.fromEntries(Object.entries(userAnswers)),
+          results: Object.fromEntries(Object.entries(results)),
+          showExplanations: Object.fromEntries(Object.entries(showExplanations)),
+          page: page.value,
+          filter: { course: filter.course, type: filter.type, chapter: filter.chapter, keyword: filter.keyword },
+          mode: mode.value,
+          activeTab: activeTab.value,
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch(e) { /* localStorage 满了就忽略 */ }
+    }
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const state = JSON.parse(raw);
+        if (state.userAnswers) Object.assign(userAnswers, state.userAnswers);
+        if (state.results) Object.assign(results, state.results);
+        if (state.showExplanations) Object.assign(showExplanations, state.showExplanations);
+        if (state.page) page.value = state.page;
+        if (state.filter) Object.assign(filter, state.filter);
+        if (state.mode) mode.value = state.mode;
+        if (state.activeTab) activeTab.value = state.activeTab;
+      } catch(e) { /* 解析失败忽略 */ }
+    }
+    // 用 watch 自动保存
+    watch([userAnswers, results, showExplanations], saveState, { deep: true });
+    watch([page, mode, activeTab, () => filter.course, () => filter.type, () => filter.chapter, () => filter.keyword], saveState);
+
     // ========== 计算属性 ==========
     const themeLabel = computed(() => theme.value === 'dark' ? 'LIGHT' : 'DARK');
 
@@ -84,7 +118,13 @@ createApp({
 
     const isCorrectOption = (q, key) => {
       const answer = q.answer;
-      if (Array.isArray(answer)) return answer.includes(key);
+      if (Array.isArray(answer)) {
+        if (answer.includes(key)) return true;
+        // 判断题：答案可能存的是选项文本而非 key
+        const optionText = q.options ? q.options[key] : null;
+        if (optionText) return answer.some(a => String(a).trim() === String(optionText).trim());
+        return false;
+      }
       return answer === key;
     };
 
@@ -165,7 +205,7 @@ createApp({
       if (tab === 'stats') loadStats();
       if (tab === 'mistakes') { mistakePage.value = 1; loadMistakes(1); }
       if (tab === 'favorites') { favPage.value = 1; loadFavorites(1); }
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // 不再强制滚动到顶部
     };
 
     // ========== 筛选相关 ==========
@@ -197,6 +237,24 @@ createApp({
       });
     };
 
+    // ========== 填空题多空辅助 ==========
+    const getFillBlanks = (q) => {
+      // 检测题干中有多少个填空位置
+      const stem = q.stem || '';
+      const matches = stem.match(/_{2,}|（\s*）|\(\s*\)/g) || [];
+      // 如果无法从题干检测，用答案数量
+      if (matches.length === 0 && Array.isArray(q.answer)) return q.answer.slice(0, 1);
+      return matches.length > 0 ? new Array(matches.length) : new Array(1);
+    };
+    const setFillBlankAnswer = (q, idx, value) => {
+      if (!Array.isArray(userAnswers[q.id])) {
+        userAnswers[q.id] = [];
+      }
+      // 确保数组长度足够
+      while (userAnswers[q.id].length <= idx) userAnswers[q.id].push('');
+      userAnswers[q.id][idx] = value;
+    };
+
     const loadQuestions = async (p = 1) => {
       page.value = p;
       const params = new URLSearchParams({ page: p, page_size: 20 });
@@ -208,6 +266,7 @@ createApp({
       questions.value = data.items || [];
       prepareQuestionState(questions.value);
       totalPages.value = Math.ceil(data.total / data.page_size) || 1;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const loadRandom = async () => {
@@ -219,6 +278,7 @@ createApp({
       questions.value = data.items || [];
       prepareQuestionState(questions.value);
       totalPages.value = 1;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     // ========== 选项交互 ==========
@@ -244,7 +304,7 @@ createApp({
     const submitAnswer = async (q) => {
       if (submitLock.value) return;
       submitLock.value = true;
-      setTimeout(() => { submitLock.value = false; }, 1500);
+      setTimeout(() => { submitLock.value = false; }, 800);
       let ans = userAnswers[q.id];
       if (q.type === 'multiple') {
         if (!Array.isArray(ans) || ans.length === 0) {
@@ -257,6 +317,17 @@ createApp({
           showToast('请先选择答案', 'error');
           return;
         }
+      } else if (q.type === 'fill_blank') {
+        ans = userAnswers[q.id];
+        if (Array.isArray(ans)) {
+          if (ans.length === 0 || ans.every(a => !a || !a.trim())) {
+            showToast('请输入答案', 'error');
+            return;
+          }
+        } else if (!ans || (typeof ans === 'string' && ans.trim() === '')) {
+          showToast('请输入答案', 'error');
+          return;
+        }
       } else {
         if (!ans || (typeof ans === 'string' && ans.trim() === '')) {
           showToast('请输入答案', 'error');
@@ -264,21 +335,25 @@ createApp({
         }
       }
 
-      const data = await fetchWithLoading('/api/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question_id: q.id, answer: ans })
-      });
-
-      results[q.id] = data;
-      if (data.correct) {
-        showToast('回答正确!', 'success');
-      } else {
-        showToast('回答错误', 'error');
+      // 静默提交，不显示加载条
+      try {
+        const res = await fetch('/api/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question_id: q.id, answer: ans })
+        });
+        const data = await res.json();
+        results[q.id] = data;
+        if (data.correct) {
+          showToast('回答正确!', 'success');
+        } else {
+          showToast('回答错误', 'error');
+        }
+        // 延迟刷新统计（不显示加载条）
+        setTimeout(() => loadStatsSilent(), 500);
+      } catch (err) {
+        showToast('网络请求失败', 'error');
       }
-
-      // 刷新统计
-      loadStats();
     };
 
     // ========== 解析显隐 ==========
@@ -296,6 +371,25 @@ createApp({
       }
     };
 
+    const loadStatsSilent = async () => {
+      try {
+        const res = await fetch('/api/stats');
+        stats.value = await res.json();
+      } catch(e) {}
+    };
+
+    // ========== 清除答题记录 ==========
+    const clearProgress = () => {
+      if (!confirm('确定要清除所有答题记录吗？此操作不可撤销。')) return;
+      Object.keys(userAnswers).forEach(k => delete userAnswers[k]);
+      Object.keys(results).forEach(k => delete results[k]);
+      Object.keys(showExplanations).forEach(k => delete showExplanations[k]);
+      localStorage.removeItem(STORAGE_KEY);
+      page.value = 1;
+      loadQuestions(1);
+      showToast('答题记录已清除', 'info');
+    };
+
     // ========== 错题 ==========
     const loadMistakes = async (p = 1) => {
       mistakePage.value = p;
@@ -305,6 +399,28 @@ createApp({
         mistakeTotalPages.value = Math.ceil(data.total / 20) || 1;
       } catch (e) {
         // silently handle
+      }
+    };
+
+    // 只刷错题
+    const practiceMistakes = async () => {
+      try {
+        // 加载所有错题
+        const res = await fetch('/api/mistakes?page=1&page_size=100');
+        const data = await res.json();
+        if (!data.items || data.items.length === 0) {
+          showToast('暂无错题', 'info');
+          return;
+        }
+        questions.value = data.items;
+        prepareQuestionState(questions.value);
+        totalPages.value = 1;
+        page.value = 1;
+        activeTab.value = 'quiz';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        showToast(`已加载 ${data.items.length} 道错题`, 'info');
+      } catch(e) {
+        showToast('加载错题失败', 'error');
       }
     };
 
@@ -405,10 +521,30 @@ createApp({
     };
 
     // 键盘快捷键
+    // 获取当前可见区域最近的未提交题目作为焦点
+    const getFocusedQuestion = () => {
+      const cards = document.querySelectorAll('.question-card');
+      if (!cards.length) return null;
+      const viewMid = window.innerHeight / 2;
+      let bestCard = null;
+      let bestDist = Infinity;
+      for (const card of cards) {
+        const rect = card.getBoundingClientRect();
+        const cardMid = rect.top + rect.height / 2;
+        const dist = Math.abs(cardMid - viewMid);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestCard = card;
+        }
+      }
+      if (!bestCard) return null;
+      const cardIndex = Array.from(cards).indexOf(bestCard);
+      return questions.value[cardIndex] || null;
+    };
+
     const handleKeydown = (e) => {
       if (activeTab.value !== 'quiz') return;
-      // 只处理刷题页
-      const q = questions.value[0]; // 当前页第一题（主要操作目标）
+      const q = getFocusedQuestion();
       if (!q || results[q.id]) return; // 已提交的不处理
 
       const key = e.key;
@@ -450,8 +586,9 @@ createApp({
     onMounted(() => {
       document.documentElement.setAttribute('data-theme', theme.value);
       window.addEventListener('keydown', handleKeydown);
+      loadState(); // 恢复之前的状态
       loadChapters();
-      loadQuestions(1);
+      loadQuestions(page.value); // 使用恢复的页码
       loadStats();
       loadMistakes(1);
       loadFavorites(1);
@@ -486,7 +623,8 @@ createApp({
       toggleExplanation, isCorrectOption,
       loadStats, loadMistakes, loadFavorites,
       isFav, toggleFav, redoQuestion,
-      typeLabel, courseLabel, formatAnswer, barWidth, showToast
+      typeLabel, courseLabel, formatAnswer, barWidth, showToast,
+      clearProgress, getFillBlanks, setFillBlankAnswer, practiceMistakes
     };
   }
 }).mount('#app');

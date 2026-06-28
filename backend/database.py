@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from contextlib import contextmanager
+import threading
 
 
 class QuizDatabase:
@@ -15,6 +16,7 @@ class QuizDatabase:
         self.backup_dir = backup_dir or str(Path(db_path).parent / "backups")
         os.makedirs(self.backup_dir, exist_ok=True)
         self._long_lived_conn = None
+        self._lock = threading.Lock()
         self._init_db()
 
     def _conn(self):
@@ -38,13 +40,14 @@ class QuizDatabase:
 
     @contextmanager
     def connection(self):
-        conn = self._conn()
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
+        with self._lock:
+            conn = self._conn()
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def _init_db(self):
         with self.connection() as conn:
@@ -165,7 +168,7 @@ class QuizDatabase:
             where.append("knowledge = ?")
             params.append(knowledge)
         if keyword:
-            where.append("stem LIKE ?")
+            where.append("stem LIKE ? ESCAPE '\\'")
             # 转义 LIKE 通配符
             escaped = keyword.replace("%", "\\%").replace("_", "\\_")
             params.append(f"%{escaped}%")
@@ -202,12 +205,12 @@ class QuizDatabase:
                 return {"course": course, "chapters": [r[0] for r in rows]}
             else:
                 rows = conn.execute(
-                    "SELECT course, GROUP_CONCAT(DISTINCT chapter ORDER BY chapter) as chapters "
+                    "SELECT course, GROUP_CONCAT(DISTINCT chapter) as chapters "
                     "FROM questions GROUP BY course"
                 ).fetchall()
                 result = {}
                 for r in rows:
-                    chapters = [int(x) for x in r[1].split(",")] if r[1] else []
+                    chapters = sorted([int(x) for x in r[1].split(",")]) if r[1] else []
                     result[r[0]] = chapters
                 return result
 
@@ -316,8 +319,8 @@ class QuizDatabase:
             conn.execute("DELETE FROM answer_records WHERE question_id = ?", (qid,))
             conn.execute("DELETE FROM mistakes WHERE question_id = ?", (qid,))
             conn.execute("DELETE FROM favorites WHERE question_id = ?", (qid,))
-            conn.execute("DELETE FROM questions WHERE id = ?", (qid,))
-            return conn.total_changes > 0
+            cur = conn.execute("DELETE FROM questions WHERE id = ?", (qid,))
+            return cur.rowcount > 0
 
     def update_question(self, qid: int, data: dict):
         allowed = {"stem", "options_json", "answer_json", "explanation", "knowledge", "difficulty", "chapter", "type"}
