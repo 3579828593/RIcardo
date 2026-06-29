@@ -12,12 +12,13 @@ project:
   tests: 35
 
 current_state:
-  phase: Phase 5.1 完成
-  status: 稳定，已部署线上，SDD 工作流已验证，doneSet 服务端同步已实现
-  last_commit: d243602
+  phase: Phase 5.1 完成 + 路线图已定
+  status: 稳定，已部署线上，暑假4阶段路线图已规划
+  last_commit: 491499b
   last_deploy: 2026-06-29 09:45
   sw_version: v5
   tests: 37
+  next_milestone: 阶段1 快而稳（暑假第1-2周）
 
 achievements:
   - phase: Phase 1
