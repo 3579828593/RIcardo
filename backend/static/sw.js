@@ -1,6 +1,6 @@
 // ============================================================
 // 期末冲刺刷题系统 Service Worker
-// 版本: v5
+// 版本: v6
 // 策略:
 //   - 首页 / 与核心静态资源: 预缓存 (precache)
 //   - 静态资源 (/static/...): StaleWhileRevalidate (先返回缓存,后台更新)
@@ -8,7 +8,7 @@
 //   - 其他导航请求: NetworkFirst, 离线回退到缓存的首页
 // ============================================================
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const STATIC_CACHE = `quiz-static-${CACHE_VERSION}`;
 const API_CACHE = `quiz-api-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `quiz-runtime-${CACHE_VERSION}`;

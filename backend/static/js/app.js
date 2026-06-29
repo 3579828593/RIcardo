@@ -557,6 +557,51 @@ createApp({
       }
     };
 
+    // ========== 离线答题队列 ==========
+    const OFFLINE_QUEUE_KEY = 'quiz_offline_queue';
+    const getOfflineQueue = () => {
+      try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]'); }
+      catch { return []; }
+    };
+    const saveOfflineQueue = (queue) => {
+      localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    };
+    // 本地判对错（题目已含 q.answer）
+    const checkAnswerLocally = (q, ans) => {
+      const correctAns = q.answer;
+      if (Array.isArray(correctAns)) {
+        const sortedAns = Array.isArray(ans) ? [...ans].sort() : [ans];
+        const sortedCorrect = [...correctAns].sort();
+        return JSON.stringify(sortedAns) === JSON.stringify(sortedCorrect);
+      }
+      return String(ans).trim() === String(correctAns).trim();
+    };
+    // 联网后同步离线队列
+    const syncOfflineQueue = async () => {
+      const queue = getOfflineQueue();
+      if (!queue.length) return;
+      let synced = 0;
+      for (const item of queue) {
+        try {
+          await apiFetch('/api/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question_id: item.qid, answer: item.ans })
+          });
+          synced++;
+        } catch (e) { break; } // 网络又断了，停止同步
+      }
+      if (synced > 0) {
+        saveOfflineQueue(queue.slice(synced));
+        showToast(`已同步 ${synced} 条离线答题记录`, 'success');
+        loadStatsSilent();
+      }
+    };
+    // 监听网络恢复
+    window.addEventListener('online', () => {
+      syncOfflineQueue();
+    });
+
     // ========== 提交答案 ==========
     const submitAnswer = async (q) => {
       if (submitLock.value) return;
@@ -592,8 +637,33 @@ createApp({
         }
       }
 
-      // 静默提交，不显示加载条
+      // 提交答案（支持离线）
       try {
+        if (!navigator.onLine) {
+          // 离线模式：本地判对错，暂存队列
+          const isCorrect = checkAnswerLocally(q, ans);
+          results[q.id] = {
+            correct: isCorrect,
+            correct_answer: q.answer,
+            explanation: q.explanation || '',
+            knowledge: q.knowledge || '',
+          };
+          doneSet.value.add(q.id);
+          // 暂存到离线队列
+          const queue = getOfflineQueue();
+          queue.push({ qid: q.id, ans: ans });
+          saveOfflineQueue(queue);
+          if (isCorrect) {
+            streak.value++;
+            haptic.success();
+            showToast('回答正确! (离线暂存)', 'success');
+          } else {
+            streak.value = 0;
+            haptic.error();
+            showToast('回答错误 (离线暂存)', 'error');
+          }
+          return;
+        }
         const res = await apiFetch('/api/submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -681,8 +751,8 @@ createApp({
       reviewQueue.value = [];
       reviewIndex.value = 0;
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(OFFLINE_QUEUE_KEY);
       page.value = 1;
-      // 清除后重新加载单题模式题目
       singleMode.value = true;
       loadAllForSingleMode();
       showToast('答题记录已清除', 'info');
@@ -1020,6 +1090,8 @@ createApp({
       loadChapters();
       loadCourseCounts();
       loadStats();
+      // 如果在线且有离线队列，自动同步
+      if (navigator.onLine) syncOfflineQueue();
       loadMistakes(mistakePage.value);
       loadFavorites(favPage.value);
       // 监听系统主题变化
