@@ -1,7 +1,7 @@
 # ============================================
 # 期末冲刺刷题系统 — 进度快照
 # 新会话开始时读取此文件了解当前状态
-# 最后更新: 2026-06-29 13:15 (阶段1 快而稳完成)
+# 最后更新: 2026-06-29 17:30 (阶段2 CSV导入+管理界面完成)
 # ============================================
 
 project:
@@ -9,16 +9,16 @@ project:
   url: https://3579828593.pythonanywhere.com
   repo: https://github.com/3579828593/RIcardo.git
   questions: 351
-  tests: 45
+  tests: 57
 
 current_state:
-  phase: 阶段1 快而稳 完成
-  status: 稳定，已部署线上，SW离线答题+Playwright E2E已实现
-  last_commit: 8681370
-  last_deploy: 2026-06-29 13:12
-  sw_version: v6
-  tests: 45
-  next_milestone: 阶段2 自己能加题（暑假第3-4周）
+  phase: 阶段2 CSV导入+管理界面 完成
+  status: 稳定，已部署线上，CSV批量导入+管理后台已实现
+  last_commit: 955cde3
+  last_deploy: 2026-06-29 17:25
+  sw_version: v7
+  tests: 57
+  next_milestone: 阶段2 剩余（Markdown导入 + CI/CD自动部署）
 
 achievements:
   - phase: Phase 1
@@ -51,12 +51,22 @@ achievements:
     name: SDD 工作流体系建设
     commit: b3f9b04
     status: done
-    notes: AGENTS.md + CONSTITUTION.md + memory-bank + tasks.md，替代 HTML 看板
+    notes: AGENTS.md + CONSTITUTION.md + memory-bank + tasks.md
   - phase: Phase 5.1
-    name: doneSet 服务端同步 (SDD 工作流首次实战演示)
+    name: doneSet 服务端同步
     commit: d243602
     status: done
-    notes: get_stats 新增 answered_question_ids，前端 syncDoneSetFromServer 并集合并
+    notes: get_stats 新增 answered_question_ids，前端 syncDoneSetFromServer
+  - phase: 阶段1
+    name: SW 离线答题 + Playwright E2E
+    commit: 8681370
+    status: done
+    notes: SW v6, 离线答题队列, 8项E2E测试
+  - phase: 阶段2 (核心)
+    name: CSV 批量导入 + 管理界面
+    commit: 955cde3
+    status: done
+    notes: csv_importer.py + batch_add_questions + 3个新API + 管理Tab + SW v7, 40项新测试
 
 decisions:
   - id: D001
@@ -82,26 +92,35 @@ decisions:
   - id: D006
     topic: 工作流体系
     decision: SDD (Spec-Driven Development) 替代 HTML 看板
-    reason: HTML 信噪比低、不可版本化、加剧上下文腐败；SDD 按需加载、可 git 追踪
+    reason: HTML 信噪比低、不可版本化；SDD 按需加载、可 git 追踪
+  - id: D007
+    topic: CSV 导入格式
+    decision: 纯 CSV 格式，不支持 Excel
+    reason: YAGNI，Excel 可另存为 CSV，减少依赖
+  - id: D008
+    topic: 题目去重策略
+    decision: UNIQUE(course, stem) + INSERT OR IGNORE
+    reason: 数据库层自动去重，无需应用层判断
 
 blockers: []
 
 next_session_rules:
   - 新会话先读 AGENTS.md，再读此文件了解进度
   - 任何前端变更必须升级 SW 版本号
-  - 部署必须包含 sw.js 在文件清单中
+  - 部署必须包含 sw.js 和 csv_importer.py 在文件清单中
   - 测试全部通过才能提交
   - 边界条件审查：溢出、空值、引用共享
   - 开发新功能前先写 .spec/specs/<feature>.md
   - 开发完成后填 .spec/reviews/<feature>.md 自检清单
+  - 测试数据使用唯一 UID 避免跨运行冲突
 
 known_issues:
-  - issue: doneSet 纯客户端 localStorage，换设备不同步
-    impact: 低（设计限制，免费方案）
-    workaround: 后续可从 /api/stats 恢复 doneSet
   - issue: PythonAnywhere 免费层冷启动 5-10 秒
     impact: 中（首次访问体验差）
     workaround: 考虑 UptimeRobot 定时 ping 保活
-  - issue: 浏览器实际交互测试缺失
-    impact: 中（可能遗漏 UI 层 bug）
-    workaround: 后续引入 Playwright E2E 测试
+  - issue: 题目编辑 UI 未实现
+    impact: 低（可通过 API 编辑）
+    workaround: 后续迭代添加
+  - issue: Lighthouse 性能审计未执行
+    impact: 低
+    workaround: 后续运行 Lighthouse 并优化
