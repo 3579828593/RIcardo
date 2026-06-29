@@ -66,7 +66,10 @@ createApp({
     const ADMIN_TOKEN_KEY = 'quiz_admin_token';
     const adminToken = ref(localStorage.getItem(ADMIN_TOKEN_KEY) || '');
     const isAdmin = ref(false);
+    // 隐藏入口：URL 参数 ?admin=1 或 localStorage 有 token 时才显示管理 Tab
+    const adminUnlocked = ref(new URLSearchParams(window.location.search).has('admin') || !!adminToken.value);
     const adminQuestions = ref([]);
+    const adminLoading = ref(false);
     const adminPage = ref(1);
     const adminTotalPages = ref(1);
     const adminFilter = reactive({ course: '', type: '', keyword: '' });
@@ -506,14 +509,24 @@ createApp({
     const loadAllForSingleMode = async () => {
       try {
         const savedIndex = cursor.value;
-        const params = new URLSearchParams({ page: 1, page_size: 500 });
-        if (selectedCourse.value) params.set('course', selectedCourse.value);
-        if (selectedTypes.value.length > 0) params.set('type', selectedTypes.value.join(','));
-        if (filter.chapter) params.set('chapter', filter.chapter);
-        if (filter.keyword) params.set('keyword', filter.keyword);
-        const res = await apiFetch('/api/questions?' + params);
-        const data = await res.json();
-        allQuestions.value = data.items || [];
+        // 分页拉取全部题目（服务端 max_page_size=100，需循环拉取）
+        const pageSize = 100;
+        let allItems = [];
+        let currentPage = 1;
+        let totalPages = 1;
+        while (currentPage <= totalPages) {
+          const params = new URLSearchParams({ page: currentPage, page_size: pageSize });
+          if (selectedCourse.value) params.set('course', selectedCourse.value);
+          if (selectedTypes.value.length > 0) params.set('type', selectedTypes.value.join(','));
+          if (filter.chapter) params.set('chapter', filter.chapter);
+          if (filter.keyword) params.set('keyword', filter.keyword);
+          const res = await apiFetch('/api/questions?' + params);
+          const data = await res.json();
+          allItems = allItems.concat(data.items || []);
+          totalPages = Math.ceil((data.total || 0) / pageSize);
+          currentPage++;
+        }
+        allQuestions.value = allItems;
         prepareQuestionState(allQuestions.value);
         // 恢复之前保存的游标，不超出范围
         cursor.value = Math.min(savedIndex, allQuestions.value.length - 1);
@@ -1031,10 +1044,17 @@ createApp({
     };
 
     // ========== 管理后台方法 ==========
-    const adminFetch = (url, options = {}) => {
+    const adminFetch = async (url, options = {}) => {
       options.headers = options.headers || {};
       options.headers['X-Admin-Token'] = adminToken.value;
-      return fetch(url, options);
+      const res = await fetch(url, options);
+      // 统一 401 处理：Token 失效时自动退出
+      if (res.status === 401 && isAdmin.value) {
+        isAdmin.value = false;
+        adminQuestions.value = [];
+        showToast('Token 已失效，请重新输入', 'error');
+      }
+      return res;
     };
 
     const adminLogin = async () => {
@@ -1068,6 +1088,7 @@ createApp({
 
     const loadAdminQuestions = async (p = 1) => {
       adminPage.value = p;
+      adminLoading.value = true;
       const params = new URLSearchParams({ page: p, page_size: 20 });
       if (adminFilter.course) params.set('course', adminFilter.course);
       if (adminFilter.type) params.set('type', adminFilter.type);
@@ -1078,12 +1099,11 @@ createApp({
           const data = await res.json();
           adminQuestions.value = data.items || [];
           adminTotalPages.value = Math.ceil(data.total / data.page_size) || 1;
-        } else if (res.status === 401) {
-          isAdmin.value = false;
-          showToast('Token 已失效，请重新输入', 'error');
         }
       } catch(e) {
         showToast('加载题目列表失败', 'error');
+      } finally {
+        adminLoading.value = false;
       }
     };
 
@@ -1297,7 +1317,8 @@ createApp({
       loadMore, loadCourseCounts,
       startReview, rateReview, exitReview,
       // 管理后台
-      adminToken, isAdmin, adminQuestions, adminPage, adminTotalPages,
+      adminToken, isAdmin, adminUnlocked, adminLoading,
+      adminQuestions, adminPage, adminTotalPages,
       adminFilter, importResult, importing, adminVisiblePages,
       adminLogin, adminLogout, loadAdminQuestions, downloadTemplate,
       uploadCSV, deleteAdminQuestion, onAdminFilterChange,

@@ -1,14 +1,14 @@
 // ============================================================
 // 期末冲刺刷题系统 Service Worker
-// 版本: v7
+// 版本: v8
 // 策略:
 //   - 首页 / 与核心静态资源: 预缓存 (precache)
 //   - 静态资源 (/static/...): StaleWhileRevalidate (先返回缓存,后台更新)
-//   - API 请求 (/api/...): NetworkFirst (回退缓存,支持离线读)
+//   - API 请求 (/api/...): NetworkFirst + 5s超时 (回退缓存,支持离线读)
 //   - 其他导航请求: NetworkFirst, 离线回退到缓存的首页
 // ============================================================
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const STATIC_CACHE = `quiz-static-${CACHE_VERSION}`;
 const API_CACHE = `quiz-api-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `quiz-runtime-${CACHE_VERSION}`;
@@ -107,11 +107,15 @@ async function cacheFirst(request, cacheName) {
   }
 }
 
-// NetworkFirst: 优先网络,失败回退缓存(离线可读)
+// NetworkFirst: 优先网络,失败或超时回退缓存(离线可读)
 async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
-    const response = await fetch(request);
+    // 5秒超时，避免冷启动长时间无反馈
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(request, { signal: controller.signal });
+    clearTimeout(timeoutId);
     if (response && response.status === 200) {
       cache.put(request, response.clone());
     }

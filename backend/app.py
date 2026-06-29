@@ -105,7 +105,8 @@ def _check_answer(qtype: str, user_answer, correct_answer) -> bool:
     if qtype == "multiple":
         if not isinstance(user_answer, list):
             return False
-        return sorted(user_answer) == sorted(correct_answer)
+        # 统一转字符串比较，避免混合类型 TypeError
+        return sorted(str(x) for x in user_answer) == sorted(str(x) for x in correct_answer)
     if qtype == "true_false":
         ua = str(user_answer).strip()
         ca = str(correct_answer[0]).strip() if correct_answer else ""
@@ -237,7 +238,7 @@ def api_submit():
     data = request.get_json(silent=True) or {}
     qid = data.get("question_id")
     user_answer = data.get("answer")
-    elapsed = data.get("elapsed_seconds", 0)
+    elapsed = max(0, int(data.get("elapsed_seconds", 0) or 0))
     if not qid:
         return jsonify({"error": "缺少 question_id"}), 400
     q = db.get_question(qid)
@@ -345,15 +346,22 @@ def api_admin_import_csv():
         }), 400
 
     # 有解析错误但也有有效题目时，仍然导入有效部分
-    import_result = db.batch_add_questions(result["questions"])
-    response = {
-        "added": import_result["added"],
-        "skipped": import_result["skipped"],
-        "total": len(result["questions"]),
-    }
-    if result["errors"]:
-        response["parse_errors"] = result["errors"]
-    return jsonify(response), 201
+    try:
+        import_result = db.batch_add_questions(result["questions"])
+        response = {
+            "added": import_result["added"],
+            "skipped": import_result["skipped"],
+            "total": len(result["questions"]),
+        }
+        if result["errors"]:
+            response["parse_errors"] = result["errors"]
+        return jsonify(response), 201
+    except Exception as e:
+        return jsonify({
+            "error": f"数据库写入失败: {str(e)}",
+            "parsed_count": len(result["questions"]),
+            "parse_errors": result["errors"],
+        }), 500
 
 
 @app.route("/api/admin/template", methods=["GET"])
@@ -420,7 +428,9 @@ def server_error(e):
 
 
 if __name__ == "__main__":
-    # 检测弱默认 admin token
-    if cfg["security"]["admin_enabled"] and cfg["security"].get("admin_token") == "local-admin-token":
-        app.logger.warning("⚠ 使用默认 admin token 'local-admin-token'，请通过环境变量 QUIZ_ADMIN_TOKEN 设置强密码")
+    # 本地开发：未设置 admin token 时使用开发默认值并警告
+    if cfg["security"]["admin_enabled"] and not cfg["security"].get("admin_token"):
+        os.environ["QUIZ_ADMIN_TOKEN"] = "local-dev-only"
+        cfg["security"]["admin_token"] = "local-dev-only"
+        app.logger.warning("⚠ 未设置 QUIZ_ADMIN_TOKEN，使用本地开发默认值。生产环境必须设置环境变量！")
     app.run(host=cfg["server"]["host"], port=cfg["server"]["port"], debug=cfg["server"]["debug"])

@@ -2,8 +2,18 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>期末冲刺刷题系统</title>
+<script>
+// 主题预加载：在 CSS 渲染前设置 data-theme，防止暗色模式闪白
+(function(){
+  var t = localStorage.getItem('theme');
+  if (!t) {
+    t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
 <!-- PWA 相关配置 -->
 <link rel="manifest" href="/static/manifest.json">
 <meta name="theme-color" content="#0a0a1a">
@@ -19,6 +29,7 @@
 :root {
   /* 亮色模式 */
   --background: #f0f0f0;
+  --bg: #f0f0f0;
   --card: #ffffff;
   --foreground: #1a1a2e;
   --card-foreground: #1a1a2e;
@@ -71,6 +82,7 @@
 
 [data-theme="dark"] {
   --background: #0a0a1a;
+  --bg: #0a0a1a;
   --card: #16162a;
   --foreground: #e8e8f0;
   --card-foreground: #e8e8f0;
@@ -203,6 +215,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
 .bottom-nav {
   position: fixed; bottom: 0; left: 0; right: 0;
   height: var(--nav-height);
+  padding-bottom: env(safe-area-inset-bottom);
   background: var(--card);
   border-top: 3px solid var(--border);
   display: flex; z-index: var(--z-nav);
@@ -815,11 +828,11 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
 
 <div id="app">
   <!-- ===== 骨架屏（Vue 挂载前显示，挂载后自动替换）===== -->
-  <div id="app-skeleton" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#c5c9c9;z-index:9999;transition:opacity .3s;">
+  <div id="app-skeleton" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg,#f5f5f5);z-index:9999;transition:opacity .3s;">
     <div style="font-size:40px;margin-bottom:12px;">📚</div>
-    <div style="font-size:14px;color:#666;margin-bottom:20px;">正在加载题库...</div>
-    <div style="width:100px;height:3px;background:#d8dada;border-radius:2px;overflow:hidden;">
-      <div style="width:30%;height:100%;background:#0040ff;border-radius:2px;animation:sk-load 1s ease-in-out infinite;"></div>
+    <div style="font-size:14px;color:var(--muted-foreground,#666);margin-bottom:20px;">正在加载题库...</div>
+    <div style="width:100px;height:3px;background:var(--border,#d8dada);border-radius:2px;overflow:hidden;">
+      <div style="width:30%;height:100%;background:var(--primary,#0040ff);border-radius:2px;animation:sk-load 1s ease-in-out infinite;"></div>
     </div>
   </div>
   <style>@keyframes sk-load{0%{transform:translateX(-100%)}100%{transform:translateX(333%)}}</style>
@@ -1427,8 +1440,14 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
           <div v-if="importResult" class="import-result" :class="importResult.success ? 'success' : 'error'">
             <div v-if="importResult.success">
               导入完成：新增 {{ importResult.added }} 题，跳过 {{ importResult.skipped }} 题（重复）
+              <span v-if="importResult.parse_errors && importResult.parse_errors.length" style="display:block;margin-top:4px;font-size:14px;">
+                ⚠ {{ importResult.parse_errors.length }} 行解析失败（见下方详情）
+              </span>
             </div>
-            <div v-if="importResult.parse_errors && importResult.parse_errors.length">
+            <div v-else>
+              {{ importResult.error || '导入失败' }}
+            </div>
+            <div v-if="importResult.parse_errors && importResult.parse_errors.length" style="margin-top:8px;">
               <div style="font-weight:600;margin-bottom:4px;">解析错误 ({{ importResult.parse_errors.length }} 行):</div>
               <div v-for="err in importResult.parse_errors" :key="err.row" class="error-row">
                 第 {{ err.row }} 行: {{ err.error }}
@@ -1462,7 +1481,13 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
           </div>
 
           <!-- 题目列表 -->
-          <div v-if="adminQuestions.length === 0" class="empty-state">
+          <div v-if="adminLoading" class="empty-state">
+            <div class="skeleton-line" style="width:60%;margin:4px auto;"></div>
+            <div class="skeleton-line" style="width:80%;margin:4px auto;"></div>
+            <div class="skeleton-line" style="width:50%;margin:4px auto;"></div>
+            <div style="text-align:center;font-size:14px;color:var(--muted-foreground);margin-top:8px;">加载中...</div>
+          </div>
+          <div v-else-if="adminQuestions.length === 0" class="empty-state">
             <div class="empty-state-title">暂无题目</div>
             <div class="empty-state-desc">调整筛选条件或导入新题目</div>
           </div>
@@ -1542,7 +1567,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
       <span>收藏</span>
         </div>
 
-        <div class="nav-tab" :class="{ active: activeTab==='admin' }" @click="switchTab('admin')">
+        <div v-if="adminUnlocked" class="nav-tab" :class="{ active: activeTab==='admin' }" @click="switchTab('admin')">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>

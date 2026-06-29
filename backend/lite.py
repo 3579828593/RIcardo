@@ -312,6 +312,11 @@ function loadQ(p){
   xhr.send();
 }
 
+function escapeHtml(s){
+  if(typeof s!=='string')return String(s);
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function renderQ(q,p,tp){
   D={page:p,totalPages:tp,qid:q.id,stem:q.stem,qtype:q.type,options:q.options||{},answer:q.answer||[],explanation:q.explanation||''};
   selected=[];
@@ -320,9 +325,8 @@ function renderQ(q,p,tp){
   // 更新标签
   var tags=document.querySelector('.tags');
   var tl={'single':'单选题','multiple':'多选题','true_false':'判断题','fill_blank':'填空题','short_answer':'简答题'};
-  tags.innerHTML='<span class="tag type">'+(tl[q.type]||q.type)+'</span>';
-  // 渲染题干
-  var stemEl=document.getElementById('stem');
+  tags.innerHTML='<span class="tag type">'+escapeHtml(tl[q.type]||q.type)+'</span>';
+  // 渲染题干（HTML 转义防 XSS）
   // 重建卡片
   var card=document.getElementById('qcard');
   var oh='';
@@ -334,10 +338,10 @@ function renderQ(q,p,tp){
   }else if(q.options){
     var keys=Object.keys(q.options).sort();
     for(var i=0;i<keys.length;i++){
-      oh+='<div class="opt" data-key="'+keys[i]+'" onclick="selectOption(this)"><span class="opt-key">'+keys[i]+'</span><span class="opt-val">'+q.options[keys[i]]+'</span></div>';
+      oh+='<div class="opt" data-key="'+escapeHtml(keys[i])+'" onclick="selectOption(this)"><span class="opt-key">'+escapeHtml(keys[i])+'</span><span class="opt-val">'+escapeHtml(q.options[keys[i]])+'</span></div>';
     }
   }
-  card.innerHTML='<div class="stem" id="stem">'+q.stem+'</div><div class="opts" id="opts">'+oh+'</div><div class="btns" id="btns"><button class="btn btn-pri" id="submitBtn" onclick="doSubmit()">提交答案</button></div><div class="exp" id="exp"><div id="expText"></div><div class="ans" id="ansText"></div></div>';
+  card.innerHTML='<div class="stem" id="stem">'+escapeHtml(q.stem)+'</div><div class="opts" id="opts">'+oh+'</div><div class="btns" id="btns"><button class="btn btn-pri" id="submitBtn" onclick="doSubmit()">提交答案</button></div><div class="exp" id="exp"><div id="expText"></div><div class="ans" id="ansText"></div></div>';
 }
 </script>
 </body>

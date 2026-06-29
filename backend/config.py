@@ -25,7 +25,7 @@ def load_config():
     cfg["server"]["host"] = os.environ.get("HOST", cfg["server"]["host"])
     cfg["server"]["port"] = int(os.environ.get("PORT", cfg["server"]["port"]))
     cfg["security"]["secret_key"] = os.environ.get(cfg["security"]["secret_key_env"], "dev-change-me-" + str(os.urandom(16).hex()))
-    cfg["security"]["admin_token"] = os.environ.get(cfg["security"]["admin_token_env"], "local-admin-token")
+    cfg["security"]["admin_token"] = os.environ.get(cfg["security"]["admin_token_env"])
     # 路径绝对化（支持 RENDER 或 DATA_DIR 环境变量覆盖数据目录）
     data_dir = os.environ.get("DATA_DIR", str(BASE_DIR))
     for k in ["db_path", "backup_dir", "export_json_path"]:
