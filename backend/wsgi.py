@@ -18,4 +18,10 @@ if project_path not in sys.path:
 # 设置数据目录（PythonAnywhere 上用 home 目录存储数据）
 os.environ.setdefault("DATA_DIR", os.path.expanduser("~/RIcardo/backend"))
 
+# 从服务器文件读取 admin token（不在代码仓库中硬编码）
+_token_file = os.path.expanduser("~/.pa_admin_token")
+if os.path.exists(_token_file):
+    with open(_token_file, "r") as f:
+        os.environ.setdefault("QUIZ_ADMIN_TOKEN", f.read().strip())
+
 from app import app as application  # noqa: E402,F401
