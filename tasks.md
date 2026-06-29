@@ -10,7 +10,7 @@
 - [x] Phase 3: 白屏修复 + 数据隔离 (commit: c3c50a8)
 - [x] Phase 4: 单题流重构 (commit: 55e6ef0)
 - [x] Phase 4.1: 工作流遗漏修复 (commit: d7725a7)
-- [x] Phase 5: SDD 工作流体系建设 (2026-06-29)
+- [x] Phase 5: SDD 工作流体系建设 (commit: b3f9b04, 2026-06-29)
 
 ## 待办任务
 

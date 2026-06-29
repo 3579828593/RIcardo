@@ -634,6 +634,8 @@ createApp({
       try {
         const data = await fetchWithLoading('/api/stats');
         stats.value = data;
+        // 从服务端恢复 doneSet（合并本地+服务端，解决换设备进度丢失）
+        syncDoneSetFromServer(data);
       } catch (e) {
         // silently handle
       }
@@ -642,8 +644,28 @@ createApp({
     const loadStatsSilent = async () => {
       try {
         const res = await apiFetch('/api/stats');
-        stats.value = await res.json();
+        const data = await res.json();
+        stats.value = data;
+        syncDoneSetFromServer(data);
       } catch(e) {}
+    };
+
+    // 从服务端 answered_question_ids 恢复 doneSet（并集合并）
+    const syncDoneSetFromServer = (data) => {
+      if (!data || !Array.isArray(data.answered_question_ids)) return;
+      const serverIds = data.answered_question_ids;
+      const localSet = doneSet.value;
+      let changed = false;
+      serverIds.forEach(id => {
+        if (!localSet.has(id)) {
+          localSet.add(id);
+          changed = true;
+        }
+      });
+      if (changed) {
+        doneSet.value = new Set(localSet);  // 触发响应式更新
+        saveState();
+      }
     };
 
     // ========== 清除答题记录 ==========

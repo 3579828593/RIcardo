@@ -338,9 +338,15 @@ class QuizDatabase:
             fav_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE session_id = ?", (session_id,)).fetchone()[0]
             type_dist = conn.execute("SELECT type, COUNT(*) FROM questions GROUP BY type").fetchall()
             course_dist = conn.execute("SELECT course, COUNT(*) FROM questions GROUP BY course").fetchall()
+            # 获取已答题 ID 列表，用于前端恢复 doneSet
+            answered_ids = [r[0] for r in conn.execute(
+                "SELECT DISTINCT question_id FROM answer_records WHERE session_id = ?",
+                (session_id,)
+            ).fetchall()]
         return {
             "total_questions": total,
             "answered_questions": answered,
+            "answered_question_ids": answered_ids,
             "total_answers": total_answers,
             "correct_answers": correct,
             "accuracy": round(correct / total_answers, 4) if total_answers else 0,

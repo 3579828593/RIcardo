@@ -1,7 +1,7 @@
 # ============================================
 # 期末冲刺刷题系统 — 进度快照
 # 新会话开始时读取此文件了解当前状态
-# 最后更新: 2026-06-29 08:20
+# 最后更新: 2026-06-29 09:30 (审计后修正)
 # ============================================
 
 project:
@@ -12,9 +12,9 @@ project:
   tests: 35
 
 current_state:
-  phase: Phase 4.1 完成
-  status: 稳定，已部署线上
-  last_commit: d7725a7
+  phase: Phase 5 完成
+  status: 稳定，已部署线上，SDD 工作流体系已建立
+  last_commit: b3f9b04
   last_deploy: 2026-06-29 08:15
   sw_version: v5
 
@@ -45,6 +45,11 @@ achievements:
     commit: d7725a7
     status: done
     notes: SW v5 + 进度计算修复 + 引用拷贝修复
+  - phase: Phase 5
+    name: SDD 工作流体系建设
+    commit: b3f9b04
+    status: done
+    notes: AGENTS.md + CONSTITUTION.md + memory-bank + tasks.md，替代 HTML 看板
 
 decisions:
   - id: D001
@@ -67,6 +72,10 @@ decisions:
     topic: 部署方式
     decision: Files API 直接上传文件，非控制台命令
     reason: PythonAnywhere 控制台 API 需浏览器先加载，Files API 更可靠
+  - id: D006
+    topic: 工作流体系
+    decision: SDD (Spec-Driven Development) 替代 HTML 看板
+    reason: HTML 信噪比低、不可版本化、加剧上下文腐败；SDD 按需加载、可 git 追踪
 
 blockers: []
 
@@ -76,6 +85,8 @@ next_session_rules:
   - 部署必须包含 sw.js 在文件清单中
   - 测试全部通过才能提交
   - 边界条件审查：溢出、空值、引用共享
+  - 开发新功能前先写 .spec/specs/<feature>.md
+  - 开发完成后填 .spec/reviews/<feature>.md 自检清单
 
 known_issues:
   - issue: doneSet 纯客户端 localStorage，换设备不同步

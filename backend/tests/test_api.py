@@ -139,6 +139,37 @@ class TestQuizAPI(unittest.TestCase):
         self.assertGreaterEqual(data["accuracy"], 0)
         self.assertIn("type_distribution", data)
 
+    def test_stats_answered_question_ids(self):
+        """验证 /api/stats 返回 answered_question_ids 数组"""
+        # 先答一道题
+        resp = self.client.post("/api/submit",
+            data=json.dumps({"question_id": 1, "answer": "test"}),
+            content_type="application/json",
+            headers={"X-Session-Id": "test_doneset_sync"})
+        self.assertEqual(resp.status_code, 200)
+
+        # 查询 stats
+        resp = self.client.get("/api/stats",
+            headers={"X-Session-Id": "test_doneset_sync"})
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data.decode())
+
+        self.assertIn("answered_question_ids", data)
+        self.assertIsInstance(data["answered_question_ids"], list)
+        self.assertIn(1, data["answered_question_ids"])
+        self.assertEqual(data["answered_questions"], len(data["answered_question_ids"]))
+
+    def test_stats_empty_session_has_empty_ids(self):
+        """验证新会话 answered_question_ids 为空数组"""
+        resp = self.client.get("/api/stats",
+            headers={"X-Session-Id": "fresh_empty_session"})
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data.decode())
+
+        self.assertIn("answered_question_ids", data)
+        self.assertEqual(data["answered_question_ids"], [])
+        self.assertEqual(data["answered_questions"], 0)
+
     # =======================================================================
     # 7. GET /api/mistakes?page=1&page_size=5 — 错题分页
     # =======================================================================
