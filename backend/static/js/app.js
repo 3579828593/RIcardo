@@ -62,6 +62,17 @@ createApp({
     const reviewQueue = ref([]);
     const reviewIndex = ref(0);
 
+    // ========== 管理后台 ==========
+    const ADMIN_TOKEN_KEY = 'quiz_admin_token';
+    const adminToken = ref(localStorage.getItem(ADMIN_TOKEN_KEY) || '');
+    const isAdmin = ref(false);
+    const adminQuestions = ref([]);
+    const adminPage = ref(1);
+    const adminTotalPages = ref(1);
+    const adminFilter = reactive({ course: '', type: '', keyword: '' });
+    const importResult = ref(null);
+    const importing = ref(false);
+
     // ========== 触觉反馈 ==========
     const haptic = {
       light: () => { if (navigator.vibrate) navigator.vibrate(10); },
@@ -334,6 +345,13 @@ createApp({
       if (tab === 'stats') loadStats();
       if (tab === 'mistakes') { loadMistakes(mistakePage.value); }
       if (tab === 'favorites') { loadFavorites(favPage.value); }
+      if (tab === 'admin') {
+        if (adminToken.value && !isAdmin.value) {
+          adminLogin();
+        } else if (isAdmin.value && adminQuestions.value.length === 0) {
+          loadAdminQuestions(1);
+        }
+      }
       nextTick(() => window.scrollTo({ top: scrollMemory[tab] || 0 }));
     };
 
@@ -1012,6 +1030,140 @@ createApp({
       }
     };
 
+    // ========== 管理后台方法 ==========
+    const adminFetch = (url, options = {}) => {
+      options.headers = options.headers || {};
+      options.headers['X-Admin-Token'] = adminToken.value;
+      return fetch(url, options);
+    };
+
+    const adminLogin = async () => {
+      if (!adminToken.value.trim()) {
+        showToast('请输入 Admin Token', 'error');
+        return;
+      }
+      try {
+        const res = await adminFetch('/api/admin/questions?page=1&page_size=1');
+        if (res.ok) {
+          isAdmin.value = true;
+          localStorage.setItem(ADMIN_TOKEN_KEY, adminToken.value);
+          showToast('管理员验证成功', 'success');
+          loadAdminQuestions(1);
+        } else {
+          isAdmin.value = false;
+          showToast('Token 无效', 'error');
+        }
+      } catch(e) {
+        showToast('验证失败，请检查网络', 'error');
+      }
+    };
+
+    const adminLogout = () => {
+      isAdmin.value = false;
+      adminToken.value = '';
+      localStorage.removeItem(ADMIN_TOKEN_KEY);
+      adminQuestions.value = [];
+      showToast('已退出管理', 'info');
+    };
+
+    const loadAdminQuestions = async (p = 1) => {
+      adminPage.value = p;
+      const params = new URLSearchParams({ page: p, page_size: 20 });
+      if (adminFilter.course) params.set('course', adminFilter.course);
+      if (adminFilter.type) params.set('type', adminFilter.type);
+      if (adminFilter.keyword) params.set('keyword', adminFilter.keyword);
+      try {
+        const res = await adminFetch('/api/admin/questions?' + params);
+        if (res.ok) {
+          const data = await res.json();
+          adminQuestions.value = data.items || [];
+          adminTotalPages.value = Math.ceil(data.total / data.page_size) || 1;
+        } else if (res.status === 401) {
+          isAdmin.value = false;
+          showToast('Token 已失效，请重新输入', 'error');
+        }
+      } catch(e) {
+        showToast('加载题目列表失败', 'error');
+      }
+    };
+
+    const adminVisiblePages = computed(() => buildVisiblePages(adminPage.value, adminTotalPages.value));
+
+    const downloadTemplate = async () => {
+      try {
+        const res = await adminFetch('/api/admin/template');
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'quiz_template.csv';
+          a.click();
+          URL.revokeObjectURL(url);
+          showToast('模板已下载', 'success');
+        }
+      } catch(e) {
+        showToast('下载模板失败', 'error');
+      }
+    };
+
+    const uploadCSV = async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      importing.value = true;
+      importResult.value = null;
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await adminFetch('/api/admin/import/csv', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (res.ok || res.status === 201) {
+          importResult.value = { success: true, ...data };
+          showToast(`成功导入 ${data.added} 题，跳过 ${data.skipped} 题`, 'success');
+          loadAdminQuestions(1);
+          loadStats();
+        } else {
+          importResult.value = { success: false, ...data };
+          if (data.parse_errors && data.parse_errors.length) {
+            showToast(`解析错误 ${data.parse_errors.length} 行`, 'error');
+          } else {
+            showToast(data.error || '导入失败', 'error');
+          }
+        }
+      } catch(e) {
+        showToast('上传失败，请检查网络', 'error');
+      } finally {
+        importing.value = false;
+        event.target.value = '';
+      }
+    };
+
+    const deleteAdminQuestion = async (qid) => {
+      if (!confirm(`确定删除题目 #${qid}？此操作不可撤销。`)) return;
+      try {
+        const res = await adminFetch('/api/admin/questions/' + qid, { method: 'DELETE' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.deleted) {
+            showToast('已删除', 'success');
+            adminQuestions.value = adminQuestions.value.filter(q => q.id !== qid);
+            loadStats();
+          } else {
+            showToast('删除失败', 'error');
+          }
+        }
+      } catch(e) {
+        showToast('删除失败', 'error');
+      }
+    };
+
+    const onAdminFilterChange = () => {
+      loadAdminQuestions(1);
+    };
+
     // 键盘快捷键
     // 获取当前可见区域最近的未提交题目作为焦点
     const getFocusedQuestion = () => {
@@ -1144,6 +1296,11 @@ createApp({
       enterSingleMode, exitSingleMode, nextQuestion, prevQuestion,
       loadMore, loadCourseCounts,
       startReview, rateReview, exitReview,
+      // 管理后台
+      adminToken, isAdmin, adminQuestions, adminPage, adminTotalPages,
+      adminFilter, importResult, importing, adminVisiblePages,
+      adminLogin, adminLogout, loadAdminQuestions, downloadTemplate,
+      uploadCSV, deleteAdminQuestion, onAdminFilterChange,
     };
   }
 }).mount('#app');

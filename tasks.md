@@ -12,6 +12,7 @@
 - [x] Phase 4.1: 工作流遗漏修复 (commit: d7725a7)
 - [x] Phase 5: SDD 工作流体系建设 (commit: b3f9b04, 2026-06-29)
 - [x] Phase 5.1: doneSet 服务端同步 (commit: d243602, 2026-06-29)
+- [x] 阶段1: SW 离线答题 + Playwright E2E (commit: 8681370, 2026-06-29)
 
 ## 待办任务
 
@@ -19,18 +20,18 @@
 
 ### 阶段 1：快而稳（暑假第 1-2 周）
 
-- [ ] UptimeRobot 定时 ping 保活（解决冷启动 5-10 秒）
-- [ ] Service Worker 离线答题（离线可答题，联网同步）
-- [ ] 骨架屏 + 渐进加载优化
+- [ ] UptimeRobot 定时 ping 保活（需用户注册配置）
+- [x] Service Worker 离线答题（离线可答题，联网同步）
+- [x] 骨架屏 + 渐进加载优化
 - [ ] Lighthouse 性能评分 ≥ 80
-- [ ] Playwright E2E 测试框架搭建（覆盖核心用户路径）
+- [x] Playwright E2E 测试框架搭建（8 项测试覆盖核心路径）
 
 ### 阶段 2：自己能加题（暑假第 3-4 周）
 
-- [ ] CSV/Excel 题目导入（提供模板 + 格式校验 + 错误报告）
+- [~] CSV 题目导入（提供模板 + 格式校验 + 错误报告）
 - [ ] Markdown 题目导入
-- [ ] Admin Token 认证
-- [ ] 题目管理界面（查看/编辑/删除/筛选）
+- [x] Admin Token 认证（后端已有 require_admin 装饰器）
+- [~] 题目管理界面（查看/删除/筛选）
 - [ ] CI/CD 自动部署（git push → 自动上线）
 
 ### 阶段 3：记住我是谁（暑假第 5-6 周）

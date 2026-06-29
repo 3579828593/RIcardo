@@ -201,6 +201,41 @@ class QuizDatabase:
             )
             return cur.lastrowid
 
+    def batch_add_questions(self, questions: list) -> dict:
+        """批量添加题目，利用 UNIQUE(course, stem) 自动去重。
+
+        Args:
+            questions: 题目字典列表
+
+        Returns:
+            {added: int, skipped: int}
+        """
+        added = 0
+        skipped = 0
+        with self.connection() as conn:
+            for q in questions:
+                cur = conn.execute(
+                    """INSERT OR IGNORE INTO questions
+                    (original_id, course, chapter, type, stem, options_json, answer_json, explanation, knowledge)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        q.get("id"),
+                        q.get("course"),
+                        q.get("chapter"),
+                        q.get("type"),
+                        q.get("stem"),
+                        json.dumps(q.get("options", {}), ensure_ascii=False),
+                        json.dumps(q.get("answer"), ensure_ascii=False),
+                        q.get("explanation", ""),
+                        q.get("knowledge", ""),
+                    ),
+                )
+                if cur.rowcount > 0:
+                    added += 1
+                else:
+                    skipped += 1
+        return {"added": added, "skipped": skipped}
+
     def search_questions(
         self,
         course: str = None,

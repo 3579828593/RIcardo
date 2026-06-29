@@ -20,6 +20,7 @@ sys.path.insert(0, str(BASE_DIR))
 from config import load_config
 from database import QuizDatabase
 from lite import render_lite_page
+from csv_importer import parse_csv, generate_template
 
 app = Flask(__name__, template_folder=str(BASE_DIR / "templates"), static_folder=str(BASE_DIR / "static"))
 # 避免 Flask/Jinja 解析 Vue 的 {{ }} 插值表达式。
@@ -292,15 +293,79 @@ def api_toggle_favorite(qid):
         return jsonify({"favorited": False, "removed": removed})
 
 
-@app.route("/api/admin/questions", methods=["POST"])
+@app.route("/api/admin/questions", methods=["GET", "POST"])
 @require_admin
-def api_admin_create():
+def api_admin_questions():
+    if request.method == "GET":
+        course = request.args.get("course")
+        chapter = request.args.get("chapter", type=int)
+        qtype = request.args.get("type")
+        keyword = request.args.get("keyword")
+        page, error, status = _positive_int_arg("page", 1)
+        if error:
+            return error, status
+        page_size, error, status = _positive_int_arg("page_size", 20, 100)
+        if error:
+            return error, status
+        result = db.search_questions(course, chapter, qtype, keyword, None, page, page_size)
+        return jsonify(result)
+    # POST — 创建单题
     data = request.get_json(silent=True) or {}
     required = {"course", "chapter", "type", "stem", "answer"}
     if not required.issubset(data):
         return jsonify({"error": f"缺少字段: {required - set(data)}"}), 400
     rid = db.add_question(data)
     return jsonify({"id": rid}), 201
+
+
+@app.route("/api/admin/import/csv", methods=["POST"])
+@require_admin
+def api_admin_import_csv():
+    """CSV 批量导入题目。支持 multipart/form-data (file) 或 JSON (content)。"""
+    content = ""
+    if "file" in request.files:
+        raw = request.files["file"].read()
+        # 处理 BOM 和编码
+        content = raw.decode("utf-8-sig", errors="replace")
+    else:
+        data = request.get_json(silent=True) or {}
+        content = data.get("content", "")
+
+    if not content or not content.strip():
+        return jsonify({"error": "CSV 内容为空"}), 400
+
+    result = parse_csv(content)
+
+    if not result["questions"]:
+        error_msg = "CSV 解析失败" if result["errors"] else "没有可导入的题目"
+        return jsonify({
+            "error": error_msg,
+            "parse_errors": result["errors"],
+            "parsed_count": 0,
+        }), 400
+
+    # 有解析错误但也有有效题目时，仍然导入有效部分
+    import_result = db.batch_add_questions(result["questions"])
+    response = {
+        "added": import_result["added"],
+        "skipped": import_result["skipped"],
+        "total": len(result["questions"]),
+    }
+    if result["errors"]:
+        response["parse_errors"] = result["errors"]
+    return jsonify(response), 201
+
+
+@app.route("/api/admin/template", methods=["GET"])
+@require_admin
+def api_admin_template():
+    """下载 CSV 导入模板。"""
+    csv_content = generate_template()
+    return Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=quiz_template.csv"}
+    )
 
 
 @app.route("/api/admin/questions/<int:qid>", methods=["PUT", "DELETE"])

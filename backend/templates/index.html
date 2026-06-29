@@ -786,6 +786,29 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
   50% { transform: translateY(-50%) scale(0.9); }
   100% { transform: translateY(-50%) scale(1); }
 }
+/* ========== 管理后台 ========== */
+.admin-login { max-width: 400px; margin: 40px auto; }
+.admin-login-card {
+  background: var(--card); border: 3px solid var(--border);
+  padding: 24px; box-shadow: var(--shadow);
+}
+.admin-section {
+  background: var(--card); border: 3px solid var(--border);
+  padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow-xs);
+  transition: var(--transition-theme);
+}
+.admin-section-title {
+  font-family: var(--font-pixel); font-size: 14px; font-weight: 600;
+  margin-bottom: 12px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--foreground); transition: color 0.16s;
+}
+.import-result {
+  padding: 12px; border: 2px solid; margin-top: 8px; font-size: 16px;
+  font-family: var(--font-body); line-height: 1.6;
+}
+.import-result.success { background: var(--success-light); border-color: var(--success); color: var(--success); }
+.import-result.error { background: var(--error-light); border-color: var(--error); color: var(--error); }
+.error-row { font-size: 14px; padding: 2px 0; color: var(--error); }
 </style>
 </head>
 <body>
@@ -1372,6 +1395,105 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
     </div>
     </keep-alive>
 
+    <!-- ==================== 管理页 ==================== -->
+    <div v-if="activeTab==='admin'">
+      <div class="page-title">管理后台</div>
+
+      <!-- 未认证：Token 输入 -->
+      <div v-if="!isAdmin" class="admin-login">
+        <div class="admin-login-card">
+          <div style="font-size:14px;margin-bottom:12px;color:var(--muted-foreground);">请输入管理 Token</div>
+          <input class="fill-input" type="password" v-model="adminToken"
+                 placeholder="Admin Token" @keyup.enter="adminLogin">
+          <button class="btn" style="margin-top:12px;width:100%;" @click="adminLogin">验证</button>
+        </div>
+      </div>
+
+      <!-- 已认证：管理界面 -->
+      <div v-else>
+        <!-- CSV 导入区 -->
+        <div class="admin-section">
+          <div class="admin-section-title">CSV 批量导入</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+            <button class="btn small" @click="downloadTemplate">下载模板</button>
+            <label class="btn small accent" style="cursor:pointer;">
+              {{ importing ? '导入中...' : '选择 CSV 文件' }}
+              <input type="file" accept=".csv" @change="uploadCSV" style="display:none;" :disabled="importing">
+            </label>
+            <button class="btn small outline" @click="adminLogout" style="margin-left:auto;">退出管理</button>
+          </div>
+
+          <!-- 导入结果 -->
+          <div v-if="importResult" class="import-result" :class="importResult.success ? 'success' : 'error'">
+            <div v-if="importResult.success">
+              导入完成：新增 {{ importResult.added }} 题，跳过 {{ importResult.skipped }} 题（重复）
+            </div>
+            <div v-if="importResult.parse_errors && importResult.parse_errors.length">
+              <div style="font-weight:600;margin-bottom:4px;">解析错误 ({{ importResult.parse_errors.length }} 行):</div>
+              <div v-for="err in importResult.parse_errors" :key="err.row" class="error-row">
+                第 {{ err.row }} 行: {{ err.error }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 题目管理区 -->
+        <div class="admin-section">
+          <div class="admin-section-title">题目管理</div>
+
+          <!-- 筛选 -->
+          <div class="filter-row" style="margin-bottom:12px;">
+            <select v-model="adminFilter.course" @change="onAdminFilterChange" class="compact-select">
+              <option value="">全部课程</option>
+              <option value="weather">天气分析</option>
+              <option value="english">大学英语</option>
+            </select>
+            <select v-model="adminFilter.type" @change="onAdminFilterChange" class="compact-select">
+              <option value="">全部题型</option>
+              <option value="single">单选</option>
+              <option value="multiple">多选</option>
+              <option value="true_false">判断</option>
+              <option value="fill_blank">填空</option>
+              <option value="short_answer">简答</option>
+            </select>
+            <input v-model="adminFilter.keyword" @keyup.enter="onAdminFilterChange"
+                   placeholder="关键词" class="compact-input">
+            <button class="btn small" @click="onAdminFilterChange">搜索</button>
+          </div>
+
+          <!-- 题目列表 -->
+          <div v-if="adminQuestions.length === 0" class="empty-state">
+            <div class="empty-state-title">暂无题目</div>
+            <div class="empty-state-desc">调整筛选条件或导入新题目</div>
+          </div>
+          <div v-for="q in adminQuestions" :key="q.id" class="list-card">
+            <div class="list-card-header">
+              <div class="list-card-meta">
+                <span class="question-type">{{ typeLabel(q.type) }}</span>
+                <span class="question-id">#{{ q.id }} · {{ courseLabel(q.course) }} · 第{{ q.chapter }}章</span>
+              </div>
+              <button class="btn small danger" @click="deleteAdminQuestion(q.id)">删除</button>
+            </div>
+            <div class="list-card-stem">{{ q.stem }}</div>
+          </div>
+
+          <!-- 分页 -->
+          <div class="pagination" v-if="adminTotalPages > 1">
+            <button :disabled="adminPage <= 1" @click="loadAdminQuestions(adminPage - 1)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <template v-for="p in adminVisiblePages" :key="p">
+              <button v-if="p !== '...'" :class="{ active: p === adminPage }" @click="loadAdminQuestions(p)">{{ p }}</button>
+              <span v-else class="pagination-ellipsis">...</span>
+            </template>
+            <button :disabled="adminPage >= adminTotalPages" @click="loadAdminQuestions(adminPage + 1)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /main-content -->
 
   <!-- 快捷键提示 -->
@@ -1418,8 +1540,16 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
       </svg>
       <span>收藏</span>
-    </div>
-  </nav>
+        </div>
+
+        <div class="nav-tab" :class="{ active: activeTab==='admin' }" @click="switchTab('admin')">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span>管理</span>
+        </div>
+      </nav>
 </div>
 
 <!-- CRT 扫描线 -->
