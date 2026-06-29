@@ -1,7 +1,7 @@
 # ============================================
 # 期末冲刺刷题系统 — 进度快照
 # 新会话开始时读取此文件了解当前状态
-# 最后更新: 2026-06-29 17:30 (阶段2 CSV导入+管理界面完成)
+# 最后更新: 2026-06-29 18:00 (安全加固+核心功能修复+UX优化)
 # ============================================
 
 project:
@@ -9,16 +9,16 @@ project:
   url: https://3579828593.pythonanywhere.com
   repo: https://github.com/3579828593/RIcardo.git
   questions: 351
-  tests: 57
+  tests: 77
 
 current_state:
-  phase: 阶段2 CSV导入+管理界面 完成
-  status: 稳定，已部署线上，CSV批量导入+管理后台已实现
-  last_commit: 955cde3
-  last_deploy: 2026-06-29 17:25
-  sw_version: v7
-  tests: 57
-  next_milestone: 阶段2 剩余（Markdown导入 + CI/CD自动部署）
+  phase: 安全加固 + 核心功能修复 完成
+  status: 稳定，已部署线上，2个安全漏洞已修复，核心功能已修复
+  last_commit: 3541310
+  last_deploy: 2026-06-29 17:55
+  sw_version: v8
+  tests: 77
+  next_milestone: 阶段3 用户账号体系（暑假第5-6周）
 
 achievements:
   - phase: Phase 1
@@ -41,66 +41,71 @@ achievements:
     name: 单题流重构
     commit: 55e6ef0
     status: done
-    notes: cursor + doneSet + 进度条 + 跳过已做
   - phase: Phase 4.1
     name: 工作流遗漏修复
     commit: d7725a7
     status: done
-    notes: SW v5 + 进度计算修复 + 引用拷贝修复
   - phase: Phase 5
     name: SDD 工作流体系建设
     commit: b3f9b04
     status: done
-    notes: AGENTS.md + CONSTITUTION.md + memory-bank + tasks.md
   - phase: Phase 5.1
     name: doneSet 服务端同步
     commit: d243602
     status: done
-    notes: get_stats 新增 answered_question_ids，前端 syncDoneSetFromServer
   - phase: 阶段1
     name: SW 离线答题 + Playwright E2E
     commit: 8681370
     status: done
-    notes: SW v6, 离线答题队列, 8项E2E测试
-  - phase: 阶段2 (核心)
+  - phase: 阶段2 核心
     name: CSV 批量导入 + 管理界面
     commit: 955cde3
     status: done
-    notes: csv_importer.py + batch_add_questions + 3个新API + 管理Tab + SW v7, 40项新测试
+  - phase: 安全加固
+    name: 安全漏洞修复 + 核心功能修复 + UX优化
+    commit: 3541310
+    status: done
+    notes: |
+      C1: 移除默认弱密码admin token，改用服务器文件读取
+      C2: lite.py renderQ HTML转义修复存储型XSS
+      H1: 单题模式分页拉取全部题目（循环page_size=100）
+      P0: 管理 Tab 隐藏入口(?admin=1) + 加载状态 + 错误显示
+      P1: 骨架屏CSS变量 + 主题预加载 + NetworkFirst 5s超时 + safe-area
+      M: 多选题类型校验 + CSV导入异常处理 + elapsed校验 + 401统一处理
 
 decisions:
   - id: D001
     topic: 前端框架选择
     decision: Vue 3 CDN，无构建步骤
-    reason: 降低部署复杂度，适配 PythonAnywhere 免费层
   - id: D002
     topic: 数据隔离方案
-    decision: Session ID (X-Session-Id header)，无用户登录
-    reason: 免费方案，无需后端用户管理
+    decision: Session ID (X-Session-Id header)
   - id: D003
     topic: 缓存策略
-    decision: SW StaleWhileRevalidate (静态资源) + NetworkFirst (API)
-    reason: 先返回缓存快速加载，后台更新避免旧版本锁死
+    decision: SW StaleWhileRevalidate + NetworkFirst(5s超时)
   - id: D004
     topic: 单题流模式
     decision: cursor + doneSet，默认单题模式
-    reason: 参考粉笔/Anki/Quizlet，聚焦单题体验
   - id: D005
     topic: 部署方式
-    decision: Files API 直接上传文件，非控制台命令
-    reason: PythonAnywhere 控制台 API 需浏览器先加载，Files API 更可靠
+    decision: Files API 直接上传文件
   - id: D006
     topic: 工作流体系
-    decision: SDD (Spec-Driven Development) 替代 HTML 看板
-    reason: HTML 信噪比低、不可版本化；SDD 按需加载、可 git 追踪
+    decision: SDD (Spec-Driven Development)
   - id: D007
     topic: CSV 导入格式
     decision: 纯 CSV 格式，不支持 Excel
-    reason: YAGNI，Excel 可另存为 CSV，减少依赖
   - id: D008
     topic: 题目去重策略
     decision: UNIQUE(course, stem) + INSERT OR IGNORE
-    reason: 数据库层自动去重，无需应用层判断
+  - id: D009
+    topic: Admin Token 安全
+    decision: 从服务器文件 ~/.pa_admin_token 读取，不在代码中硬编码
+    reason: 移除弱默认密码，生产环境使用32字符随机token
+  - id: D010
+    topic: 管理 Tab 入口
+    decision: URL 参数 ?admin=1 或 localStorage 有 token 才显示
+    reason: 普通学生不应看到管理入口
 
 blockers: []
 
@@ -113,14 +118,18 @@ next_session_rules:
   - 开发新功能前先写 .spec/specs/<feature>.md
   - 开发完成后填 .spec/reviews/<feature>.md 自检清单
   - 测试数据使用唯一 UID 避免跨运行冲突
+  - admin token 存储在 ~/.pa_admin_token，本地备份在 ~/.pa_admin_token_value
 
 known_issues:
   - issue: PythonAnywhere 免费层冷启动 5-10 秒
-    impact: 中（首次访问体验差）
-    workaround: 考虑 UptimeRobot 定时 ping 保活
+    impact: 中
+    workaround: NetworkFirst 5s超时 + UptimeRobot 保活
   - issue: 题目编辑 UI 未实现
-    impact: 低（可通过 API 编辑）
-    workaround: 后续迭代添加
-  - issue: Lighthouse 性能审计未执行
     impact: 低
-    workaround: 后续运行 Lighthouse 并优化
+    workaround: 可通过 API 编辑
+  - issue: CSP 允许 unsafe-eval（Vue CDN 需要）
+    impact: 低
+    workaround: 长期改用 Vue SFC + 构建工具
+  - issue: 速率限制未实现
+    impact: 中
+    workaround: 后续引入 flask-limiter
