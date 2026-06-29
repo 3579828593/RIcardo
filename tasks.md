@@ -11,6 +11,7 @@
 - [x] Phase 4: 单题流重构 (commit: 55e6ef0)
 - [x] Phase 4.1: 工作流遗漏修复 (commit: d7725a7)
 - [x] Phase 5: SDD 工作流体系建设 (commit: b3f9b04, 2026-06-29)
+- [x] Phase 5.1: doneSet 服务端同步 (commit: d243602, 2026-06-29)
 
 ## 待办任务
 
@@ -20,10 +21,12 @@
   - 测试单题流：答题 → 下一题跳过已做 → 进度条更新
   - 测试数据隔离：新会话 0 题 → 答题 → stats 正确
   - 测试 SW 更新：旧版本 → 新版本自动刷新
+  - 测试 doneSet 同步：清除 localStorage → 刷新 → doneSet 从服务端恢复
 
-- [ ] doneSet 服务端同步
-  - 从 /api/stats 获取已答题列表，恢复 doneSet
+- [~] doneSet 服务端同步 — 已实现，待多设备实际验证
+  - 从 /api/stats 获取 answered_question_ids，恢复 doneSet
   - 解决换设备后进度丢失问题
+  - 已部署线上，API 验证通过
 
 ### 中优先级
 

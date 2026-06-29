@@ -1,7 +1,7 @@
 # ============================================
 # 期末冲刺刷题系统 — 进度快照
 # 新会话开始时读取此文件了解当前状态
-# 最后更新: 2026-06-29 09:30 (审计后修正)
+# 最后更新: 2026-06-29 09:50 (doneSet 服务端同步完成)
 # ============================================
 
 project:
@@ -12,11 +12,12 @@ project:
   tests: 35
 
 current_state:
-  phase: Phase 5 完成
-  status: 稳定，已部署线上，SDD 工作流体系已建立
-  last_commit: b3f9b04
-  last_deploy: 2026-06-29 08:15
+  phase: Phase 5.1 完成
+  status: 稳定，已部署线上，SDD 工作流已验证，doneSet 服务端同步已实现
+  last_commit: d243602
+  last_deploy: 2026-06-29 09:45
   sw_version: v5
+  tests: 37
 
 achievements:
   - phase: Phase 1
@@ -50,6 +51,11 @@ achievements:
     commit: b3f9b04
     status: done
     notes: AGENTS.md + CONSTITUTION.md + memory-bank + tasks.md，替代 HTML 看板
+  - phase: Phase 5.1
+    name: doneSet 服务端同步 (SDD 工作流首次实战演示)
+    commit: d243602
+    status: done
+    notes: get_stats 新增 answered_question_ids，前端 syncDoneSetFromServer 并集合并
 
 decisions:
   - id: D001
