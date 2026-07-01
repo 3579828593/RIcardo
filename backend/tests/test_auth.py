@@ -322,3 +322,48 @@ def test_csrf_protection():
     # 带 CSRF → 不是 403
     resp = client.post("/api/favorites/1", headers={"X-CSRF-Token": csrf})
     assert resp.status_code != 403
+
+
+def test_submit_records_user_id():
+    """已登录用户提交答案时记录 user_id"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    reg = client.post("/api/auth/register", json={
+        "student_id": "submit001", "password": "test123456", "nickname": "提交测试"
+    })
+    csrf = reg.get_json()['csrf_token']
+    qid = db.add_question({"course": "test", "chapter": 1, "type": "single",
+                           "stem": "submit_user_test_unique", "options": {"A": "a", "B": "b"},
+                           "answer": ["A"]})
+    resp = client.post("/api/submit", json={
+        "question_id": qid, "answer": "A"
+    }, headers={"X-CSRF-Token": csrf})
+    assert resp.status_code == 200
+    with db.connection() as conn:
+        row = conn.execute(
+            "SELECT user_id FROM answer_records WHERE question_id = ?", (qid,)
+        ).fetchone()
+    assert row is not None and row['user_id'] is not None
+
+
+def test_stats_for_logged_in_user():
+    """已登录用户获取自己的统计数据"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    reg = client.post("/api/auth/register", json={
+        "student_id": "stats001", "password": "test123456", "nickname": "统计测试"
+    })
+    csrf = reg.get_json()['csrf_token']
+    qid = db.add_question({"course": "test", "chapter": 1, "type": "single",
+                           "stem": "stats_user_test_unique", "options": {"A": "a", "B": "b"},
+                           "answer": ["A"]})
+    client.post("/api/submit", json={"question_id": qid, "answer": "A"},
+                headers={"X-CSRF-Token": csrf})
+    resp = client.get("/api/stats")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['answered_questions'] >= 1

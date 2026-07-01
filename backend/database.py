@@ -479,38 +479,61 @@ class QuizDatabase:
             q['stem'] = clean_stem(q.get('stem', ''))
         return results
 
-    def record_answer(self, question_id: int, user_answer, correct: bool, elapsed: int = 0, session_id: str = 'anon'):
+    def record_answer(self, question_id: int, user_answer, correct: bool, elapsed: int = 0,
+                      session_id: str = 'anon', user_id: int = None, bank_id: int = 1):
         with self.connection() as conn:
             conn.execute(
-                "INSERT INTO answer_records (question_id, user_answer, correct, elapsed_seconds, session_id) VALUES (?, ?, ?, ?, ?)",
-                (question_id, json.dumps(user_answer, ensure_ascii=False), int(correct), elapsed, session_id),
+                """INSERT INTO answer_records (question_id, user_answer, correct, elapsed_seconds, session_id, user_id, bank_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (question_id, json.dumps(user_answer, ensure_ascii=False), int(correct), elapsed, session_id, user_id, bank_id),
             )
             if correct:
-                conn.execute("DELETE FROM mistakes WHERE question_id = ? AND session_id = ?", (question_id, session_id))
+                if user_id:
+                    conn.execute("DELETE FROM mistakes WHERE question_id = ? AND (session_id = ? OR user_id = ?)",
+                                 (question_id, session_id, user_id))
+                else:
+                    conn.execute("DELETE FROM mistakes WHERE question_id = ? AND session_id = ?", (question_id, session_id))
             else:
-                conn.execute(
-                    """INSERT INTO mistakes (question_id, wrong_count, last_wrong_at, session_id)
-                    VALUES (?, 1, CURRENT_TIMESTAMP, ?)
-                    ON CONFLICT(question_id, session_id) DO UPDATE SET
-                    wrong_count = wrong_count + 1, last_wrong_at = CURRENT_TIMESTAMP""",
-                    (question_id, session_id),
-                )
+                if user_id:
+                    conn.execute(
+                        """INSERT INTO mistakes (question_id, wrong_count, last_wrong_at, session_id, user_id, bank_id)
+                        VALUES (?, 1, CURRENT_TIMESTAMP, ?, ?, ?)
+                        ON CONFLICT(question_id, session_id) DO UPDATE SET
+                        wrong_count = wrong_count + 1, last_wrong_at = CURRENT_TIMESTAMP""",
+                        (question_id, session_id, user_id, bank_id),
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO mistakes (question_id, wrong_count, last_wrong_at, session_id, bank_id)
+                        VALUES (?, 1, CURRENT_TIMESTAMP, ?, ?)
+                        ON CONFLICT(question_id, session_id) DO UPDATE SET
+                        wrong_count = wrong_count + 1, last_wrong_at = CURRENT_TIMESTAMP""",
+                        (question_id, session_id, bank_id),
+                    )
 
-    def get_stats(self, session_id: str = 'anon') -> dict:
+    def get_stats(self, session_id: str = 'anon', user_id: int = None) -> dict:
         with self.connection() as conn:
             total = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
-            answered = conn.execute("SELECT COUNT(DISTINCT question_id) FROM answer_records WHERE session_id = ?", (session_id,)).fetchone()[0]
-            correct = conn.execute("SELECT COUNT(*) FROM answer_records WHERE correct = 1 AND session_id = ?", (session_id,)).fetchone()[0]
-            total_answers = conn.execute("SELECT COUNT(*) FROM answer_records WHERE session_id = ?", (session_id,)).fetchone()[0]
-            mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes WHERE session_id = ?", (session_id,)).fetchone()[0]
-            fav_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE session_id = ?", (session_id,)).fetchone()[0]
+            if user_id:
+                answered = conn.execute("SELECT COUNT(DISTINCT question_id) FROM answer_records WHERE user_id = ?", (user_id,)).fetchone()[0]
+                correct = conn.execute("SELECT COUNT(*) FROM answer_records WHERE correct = 1 AND user_id = ?", (user_id,)).fetchone()[0]
+                total_answers = conn.execute("SELECT COUNT(*) FROM answer_records WHERE user_id = ?", (user_id,)).fetchone()[0]
+                mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes WHERE user_id = ?", (user_id,)).fetchone()[0]
+                fav_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE user_id = ?", (user_id,)).fetchone()[0]
+                answered_ids = [r[0] for r in conn.execute(
+                    "SELECT DISTINCT question_id FROM answer_records WHERE user_id = ?", (user_id,)
+                ).fetchall()]
+            else:
+                answered = conn.execute("SELECT COUNT(DISTINCT question_id) FROM answer_records WHERE session_id = ?", (session_id,)).fetchone()[0]
+                correct = conn.execute("SELECT COUNT(*) FROM answer_records WHERE correct = 1 AND session_id = ?", (session_id,)).fetchone()[0]
+                total_answers = conn.execute("SELECT COUNT(*) FROM answer_records WHERE session_id = ?", (session_id,)).fetchone()[0]
+                mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes WHERE session_id = ?", (session_id,)).fetchone()[0]
+                fav_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE session_id = ?", (session_id,)).fetchone()[0]
+                answered_ids = [r[0] for r in conn.execute(
+                    "SELECT DISTINCT question_id FROM answer_records WHERE session_id = ?", (session_id,)
+                ).fetchall()]
             type_dist = conn.execute("SELECT type, COUNT(*) FROM questions GROUP BY type").fetchall()
             course_dist = conn.execute("SELECT course, COUNT(*) FROM questions GROUP BY course").fetchall()
-            # 获取已答题 ID 列表，用于前端恢复 doneSet
-            answered_ids = [r[0] for r in conn.execute(
-                "SELECT DISTINCT question_id FROM answer_records WHERE session_id = ?",
-                (session_id,)
-            ).fetchall()]
         return {
             "total_questions": total,
             "answered_questions": answered,
@@ -524,54 +547,92 @@ class QuizDatabase:
             "course_distribution": {r[0]: r[1] for r in course_dist},
         }
 
-    def get_mistakes(self, page=1, page_size=20, session_id='anon'):
+    def get_mistakes(self, page=1, page_size=20, session_id='anon', user_id=None):
         offset = (page - 1) * page_size
         with self.connection() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM mistakes WHERE session_id = ?", (session_id,)).fetchone()[0]
-            rows = conn.execute(
-                """SELECT q.*, m.wrong_count, m.last_wrong_at
-                FROM questions q JOIN mistakes m ON q.id = m.question_id
-                WHERE m.session_id = ?
-                ORDER BY m.wrong_count DESC, m.last_wrong_at DESC
-                LIMIT ? OFFSET ?""",
-                (session_id, page_size, offset),
-            ).fetchall()
-        return {"items": [self._row_to_dict(r) for r in rows], "page": page, "page_size": page_size, "total": total}
-
-    def get_favorites(self, page=1, page_size=20, session_id='anon'):
-        offset = (page - 1) * page_size
-        with self.connection() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM favorites WHERE session_id = ?", (session_id,)).fetchone()[0]
-            rows = conn.execute(
-                """SELECT q.*, f.tag, f.created_at as fav_at
-                FROM questions q JOIN favorites f ON q.id = f.question_id
-                WHERE f.session_id = ?
-                ORDER BY f.created_at DESC LIMIT ? OFFSET ?""",
-                (session_id, page_size, offset),
-            ).fetchall()
-        return {"items": [self._row_to_dict(r) for r in rows], "page": page, "page_size": page_size, "total": total}
-
-    def toggle_favorite(self, question_id: int, tag: str = None, session_id: str = 'anon'):
-        with self.connection() as conn:
-            exists = conn.execute("SELECT 1 FROM favorites WHERE question_id = ? AND session_id = ?", (question_id, session_id)).fetchone()
-            if exists:
-                conn.execute("DELETE FROM favorites WHERE question_id = ? AND session_id = ?", (question_id, session_id))
-                return False
+            if user_id:
+                total = conn.execute("SELECT COUNT(*) FROM mistakes WHERE user_id = ?", (user_id,)).fetchone()[0]
+                rows = conn.execute(
+                    """SELECT q.*, m.wrong_count, m.last_wrong_at
+                    FROM questions q JOIN mistakes m ON q.id = m.question_id
+                    WHERE m.user_id = ?
+                    ORDER BY m.wrong_count DESC, m.last_wrong_at DESC
+                    LIMIT ? OFFSET ?""",
+                    (user_id, page_size, offset),
+                ).fetchall()
             else:
-                conn.execute("INSERT INTO favorites (question_id, tag, session_id) VALUES (?, ?, ?)", (question_id, tag, session_id))
-                return True
+                total = conn.execute("SELECT COUNT(*) FROM mistakes WHERE session_id = ?", (session_id,)).fetchone()[0]
+                rows = conn.execute(
+                    """SELECT q.*, m.wrong_count, m.last_wrong_at
+                    FROM questions q JOIN mistakes m ON q.id = m.question_id
+                    WHERE m.session_id = ?
+                    ORDER BY m.wrong_count DESC, m.last_wrong_at DESC
+                    LIMIT ? OFFSET ?""",
+                    (session_id, page_size, offset),
+                ).fetchall()
+        return {"items": [self._row_to_dict(r) for r in rows], "page": page, "page_size": page_size, "total": total}
 
-    def remove_favorite(self, question_id: int, session_id: str = 'anon') -> bool:
+    def get_favorites(self, page=1, page_size=20, session_id='anon', user_id=None):
+        offset = (page - 1) * page_size
+        with self.connection() as conn:
+            if user_id:
+                total = conn.execute("SELECT COUNT(*) FROM favorites WHERE user_id = ?", (user_id,)).fetchone()[0]
+                rows = conn.execute(
+                    """SELECT q.*, f.tag, f.created_at as fav_at
+                    FROM questions q JOIN favorites f ON q.id = f.question_id
+                    WHERE f.user_id = ?
+                    ORDER BY f.created_at DESC LIMIT ? OFFSET ?""",
+                    (user_id, page_size, offset),
+                ).fetchall()
+            else:
+                total = conn.execute("SELECT COUNT(*) FROM favorites WHERE session_id = ?", (session_id,)).fetchone()[0]
+                rows = conn.execute(
+                    """SELECT q.*, f.tag, f.created_at as fav_at
+                    FROM questions q JOIN favorites f ON q.id = f.question_id
+                    WHERE f.session_id = ?
+                    ORDER BY f.created_at DESC LIMIT ? OFFSET ?""",
+                    (session_id, page_size, offset),
+                ).fetchall()
+        return {"items": [self._row_to_dict(r) for r in rows], "page": page, "page_size": page_size, "total": total}
+
+    def toggle_favorite(self, question_id: int, tag: str = None, session_id: str = 'anon', user_id: int = None, bank_id: int = 1):
+        with self.connection() as conn:
+            if user_id:
+                exists = conn.execute("SELECT 1 FROM favorites WHERE question_id = ? AND user_id = ?", (question_id, user_id)).fetchone()
+                if exists:
+                    conn.execute("DELETE FROM favorites WHERE question_id = ? AND user_id = ?", (question_id, user_id))
+                    return False
+                else:
+                    conn.execute("INSERT INTO favorites (question_id, tag, session_id, user_id, bank_id) VALUES (?, ?, ?, ?, ?)",
+                                 (question_id, tag, session_id, user_id, bank_id))
+                    return True
+            else:
+                exists = conn.execute("SELECT 1 FROM favorites WHERE question_id = ? AND session_id = ?", (question_id, session_id)).fetchone()
+                if exists:
+                    conn.execute("DELETE FROM favorites WHERE question_id = ? AND session_id = ?", (question_id, session_id))
+                    return False
+                else:
+                    conn.execute("INSERT INTO favorites (question_id, tag, session_id) VALUES (?, ?, ?)", (question_id, tag, session_id))
+                    return True
+
+    def remove_favorite(self, question_id: int, session_id: str = 'anon', user_id: int = None) -> bool:
         """幂等删除收藏：未收藏时不创建收藏。"""
         with self.connection() as conn:
-            cur = conn.execute("DELETE FROM favorites WHERE question_id = ? AND session_id = ?", (question_id, session_id))
+            if user_id:
+                cur = conn.execute("DELETE FROM favorites WHERE question_id = ? AND user_id = ?", (question_id, user_id))
+            else:
+                cur = conn.execute("DELETE FROM favorites WHERE question_id = ? AND session_id = ?", (question_id, session_id))
             return cur.rowcount > 0
 
-    def reset_progress(self, session_id: str = 'anon'):
-        """清除指定 session 的答题记录（含统计与错题）"""
+    def reset_progress(self, session_id: str = 'anon', user_id: int = None):
+        """清除指定 session 或 user 的答题记录（含统计与错题）"""
         with self.connection() as conn:
-            conn.execute("DELETE FROM answer_records WHERE session_id = ?", (session_id,))
-            conn.execute("DELETE FROM mistakes WHERE session_id = ?", (session_id,))
+            if user_id:
+                conn.execute("DELETE FROM answer_records WHERE user_id = ?", (user_id,))
+                conn.execute("DELETE FROM mistakes WHERE user_id = ?", (user_id,))
+            else:
+                conn.execute("DELETE FROM answer_records WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM mistakes WHERE session_id = ?", (session_id,))
             conn.commit()
 
     def delete_question(self, qid: int):

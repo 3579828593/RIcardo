@@ -269,7 +269,10 @@ def api_submit():
         return jsonify({"error": "题目不存在"}), 404
     correct = _check_answer(q["type"], user_answer, q.get("answer", []))
     sid = _get_session_id()
-    db.record_answer(qid, user_answer, correct, elapsed, session_id=sid)
+    user = _get_current_user()
+    user_id = user['id'] if user else None
+    bank_id = q.get('bank_id', 1) if q else 1
+    db.record_answer(qid, user_answer, correct, elapsed, session_id=sid, user_id=user_id, bank_id=bank_id)
     return jsonify({
         "correct": correct,
         "correct_answer": q.get("answer"),
@@ -280,7 +283,9 @@ def api_submit():
 
 @app.route("/api/stats", methods=["GET"])
 def api_stats():
-    return jsonify(db.get_stats(session_id=_get_session_id()))
+    user = _get_current_user()
+    user_id = user['id'] if user else None
+    return jsonify(db.get_stats(session_id=_get_session_id(), user_id=user_id))
 
 
 @app.route("/api/mistakes", methods=["GET"])
@@ -291,7 +296,9 @@ def api_mistakes():
     page_size, error, status = _positive_int_arg("page_size", 20, cfg["quiz"]["max_page_size"])
     if error:
         return error, status
-    return jsonify(db.get_mistakes(page, page_size, session_id=_get_session_id()))
+    user = _get_current_user()
+    user_id = user['id'] if user else None
+    return jsonify(db.get_mistakes(page, page_size, session_id=_get_session_id(), user_id=user_id))
 
 
 @app.route("/api/favorites", methods=["GET"])
@@ -302,18 +309,24 @@ def api_favorites():
     page_size, error, status = _positive_int_arg("page_size", 20, cfg["quiz"]["max_page_size"])
     if error:
         return error, status
-    return jsonify(db.get_favorites(page, page_size, session_id=_get_session_id()))
+    user = _get_current_user()
+    user_id = user['id'] if user else None
+    return jsonify(db.get_favorites(page, page_size, session_id=_get_session_id(), user_id=user_id))
 
 
 @app.route("/api/favorites/<int:qid>", methods=["POST", "DELETE"])
 def api_toggle_favorite(qid):
     sid = _get_session_id()
+    user = _get_current_user()
+    user_id = user['id'] if user else None
+    q = db.get_question(qid)
+    bank_id = q.get('bank_id', 1) if q else 1
     if request.method == "POST":
         tag = (request.get_json(silent=True) or {}).get("tag")
-        added = db.toggle_favorite(qid, tag, session_id=sid)
+        added = db.toggle_favorite(qid, tag, session_id=sid, user_id=user_id, bank_id=bank_id)
         return jsonify({"favorited": added})
     else:
-        removed = db.remove_favorite(qid, session_id=sid)
+        removed = db.remove_favorite(qid, session_id=sid, user_id=user_id)
         return jsonify({"favorited": False, "removed": removed})
 
 
@@ -431,9 +444,11 @@ def api_admin_backup():
 
 @app.route("/api/reset_stats", methods=["POST"])
 def reset_stats():
-    """清除当前 session 的答题记录（统计、错题）"""
+    """清除当前 session 或 user 的答题记录（统计、错题）"""
     try:
-        db.reset_progress(session_id=_get_session_id())
+        user = _get_current_user()
+        user_id = user['id'] if user else None
+        db.reset_progress(session_id=_get_session_id(), user_id=user_id)
         return jsonify({"ok": True, "message": "答题记录已清除"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
