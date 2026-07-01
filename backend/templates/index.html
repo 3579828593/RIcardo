@@ -947,7 +947,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
         </p>
         <label class="form-btn" style="display:block;text-align:center;cursor:pointer;">
           {{ importingBank ? '导入中...' : '选择 CSV 文件' }}
-          <input type="file" accept=".csv" @change="uploadCSV" style="display:none;" :disabled="importingBank">
+          <input type="file" accept=".csv" @change="uploadBankCSV" style="display:none;" :disabled="importingBank">
         </label>
         <div v-if="bankImportResult" style="margin-top:12px;">
           <div v-if="bankImportResult.success" style="padding:8px;background:var(--success-light);border:1px solid var(--success);font-size:13px;">

@@ -473,7 +473,7 @@ createApp({
       bankImportResult.value = null;
     };
 
-    const uploadCSV = async (event) => {
+    const uploadBankCSV = async (event) => {
       const file = event.target.files[0];
       if (!file) return;
       importingBank.value = true;
@@ -1533,7 +1533,7 @@ createApp({
       showImportModal, importingBank, bankImportResult,
       authFetch, checkAuth, submitLogin, logout,
       loadMyBanks, loadOfficialBanks, loadSubscribedBanks, selectBank, createBank,
-      openImportModal, uploadCSV,
+      openImportModal, uploadBankCSV,
     };
   }
 }).mount('#app');
