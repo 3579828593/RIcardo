@@ -504,8 +504,8 @@ class QuizDatabase:
             for q in questions:
                 cur = conn.execute(
                     """INSERT OR IGNORE INTO questions
-                    (original_id, bank_id, course, chapter, type, stem, options_json, answer_json, explanation, knowledge)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (original_id, bank_id, course, chapter, type, stem, options_json, answer_json, explanation, knowledge, flagged)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         q.get("id"),
                         bank_id,
@@ -517,6 +517,7 @@ class QuizDatabase:
                         json.dumps(q.get("answer"), ensure_ascii=False),
                         q.get("explanation", ""),
                         q.get("knowledge", ""),
+                        1 if q.get("_flagged") else 0,
                     ),
                 )
                 if cur.rowcount > 0:

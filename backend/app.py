@@ -217,6 +217,11 @@ def api_questions():
     keyword = request.args.get("keyword")
     knowledge = request.args.get("knowledge")
     bank_id = request.args.get("bank_id", type=int)
+    # 权限检查：bank_id 未提供（None）或为 1（官方题库）时不检查
+    user = _get_current_user()
+    allowed, _, err_resp = _check_bank_access(bank_id, user)
+    if not allowed:
+        return err_resp
     page, error, status = _positive_int_arg("page", 1)
     if error:
         return error, status
@@ -233,6 +238,11 @@ def api_random():
     chapter = request.args.get("chapter", type=int)
     qtype = request.args.get("type")
     bank_id = request.args.get("bank_id", type=int)
+    # 权限检查
+    user = _get_current_user()
+    allowed, _, err_resp = _check_bank_access(bank_id, user)
+    if not allowed:
+        return err_resp
     limit, error, status = _positive_int_arg("limit", 20, 100)
     if error:
         return error, status
@@ -264,12 +274,17 @@ def api_submit():
     elapsed = max(0, int(data.get("elapsed_seconds", 0) or 0))
     if not qid:
         return jsonify({"error": "缺少 question_id"}), 400
+    # 权限检查：bank_id 可能来自 JSON body，未提供时默认为 1（官方题库）
+    user = _get_current_user()
+    req_bank_id = data.get("bank_id", 1)
+    allowed, _, err_resp = _check_bank_access(req_bank_id, user, write=False)
+    if not allowed:
+        return err_resp
     q = db.get_question(qid)
     if not q:
         return jsonify({"error": "题目不存在"}), 404
     correct = _check_answer(q["type"], user_answer, q.get("answer", []))
     sid = _get_session_id()
-    user = _get_current_user()
     user_id = user['id'] if user else None
     bank_id = q.get('bank_id', 1) if q else 1
     db.record_answer(qid, user_answer, correct, elapsed, session_id=sid, user_id=user_id, bank_id=bank_id)
@@ -460,6 +475,21 @@ def _get_current_user():
     if not uid:
         return None
     return db.get_user_by_id(uid)
+
+
+def _check_bank_access(bank_id, user=None, write=False):
+    """检查用户是否有权访问题库。返回 (allowed, bank_data_or_None, error_response_or_None)"""
+    if bank_id is None or bank_id == 1:
+        return True, None, None  # 官方题库，任何人可读
+    bank_data = db.get_bank(bank_id)
+    if not bank_data:
+        return False, None, (jsonify({"error": "题库不存在"}), 404)
+    bank = Bank(bank_data)
+    user_obj = User(user) if user else None
+    allowed = can_write_bank(user_obj, bank) if write else can_read_bank(user_obj, bank)
+    if not allowed:
+        return False, bank_data, (jsonify({"error": "无权访问此题库"}), 403)
+    return True, bank_data, None
 
 
 @app.route("/api/auth/register", methods=["POST"])
@@ -863,8 +893,8 @@ def api_bank_subscribe(bank_id):
     bank = Bank(bank_data)
 
     if request.method == "POST":
-        # 只能订阅公开题库
-        if bank.visibility != 'public':
+        # 只能订阅公开且活跃的题库
+        if bank.visibility != 'public' or bank.status not in ('active',):
             return jsonify({"error": "只能订阅公开题库"}), 403
         db.subscribe_bank(user['id'], bank_id)
         return jsonify({"ok": True})

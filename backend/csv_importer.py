@@ -165,6 +165,8 @@ def sanitize_question(q: dict) -> dict:
             raw_texts.append(str(q[field]))
     for value in q.get('options', {}).values():
         raw_texts.append(str(value))
+    if q.get('answer'):
+        raw_texts.append(str(q['answer']))
     combined = '\n'.join(raw_texts).lower()
     q['_flagged'] = any(word in combined for word in SENSITIVE_WORDS)
 

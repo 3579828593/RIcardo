@@ -471,3 +471,29 @@ def test_cannot_subscribe_private_bank():
     resp = client.post(f"/api/banks/{bank_id}/subscribe",
                        headers={"X-CSRF-Token": csrf_b})
     assert resp.status_code == 403
+
+
+def test_cannot_access_private_bank_via_legacy_api():
+    """不能通过遗留 API 访问别人的私有题库"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    # 用户 A 创建私有题库并添加题目
+    reg_a = client.post("/api/auth/register", json={
+        "student_id": "legacy_owner", "password": "test123456", "nickname": "Owner"
+    })
+    csrf_a = reg_a.get_json()['csrf_token']
+    create = client.post("/api/banks", json={"name": "私有", "course": "test", "visibility": "private"},
+                         headers={"X-CSRF-Token": csrf_a})
+    bank_id = create.get_json()['id']
+    db.add_question({"course": "test", "chapter": 1, "type": "single",
+                     "stem": "private_q_test", "options": {}, "answer": ["A"]}, bank_id=bank_id)
+    client.post("/api/auth/logout")
+    # 用户 B 尝试通过 /api/questions?bank_id=X 访问
+    reg_b = client.post("/api/auth/register", json={
+        "student_id": "legacy_attacker", "password": "test123456", "nickname": "Attacker"
+    })
+    csrf_b = reg_b.get_json()['csrf_token']
+    resp = client.get(f"/api/questions?bank_id={bank_id}", headers={"X-CSRF-Token": csrf_b})
+    assert resp.status_code == 403
