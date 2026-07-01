@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
 """CSV 题目导入解析器 — 纯函数模块，易于测试"""
 import csv
+import html
 import io
 
 REQUIRED_FIELDS = ['course', 'chapter', 'type', 'stem', 'answer']
 OPTIONAL_FIELDS = ['explanation', 'knowledge']
 VALID_TYPES = ['single', 'multiple', 'true_false', 'fill_blank', 'short_answer']
 OPTION_KEYS = ['A', 'B', 'C', 'D', 'E', 'F']
+SENSITIVE_WORDS = ['<script', 'javascript:', 'onerror', 'onload', 'onclick']
+MAX_STEM_LENGTH = 2000
+MAX_OPTION_LENGTH = 500
+MAX_QUESTIONS_PER_IMPORT = 500
 
 
 def parse_csv(content: str) -> dict:
@@ -136,3 +141,38 @@ def generate_template() -> str:
     lines.append('weather,1,fill_blank,这是一个填空题答案是_____,,,,,答案,解析,知识点')
     lines.append('english,1,short_answer,请简述英语语法规则,,,,,答案文本,解析,知识点')
     return '\n'.join(lines) + '\n'
+
+
+def sanitize_question(q: dict) -> dict:
+    """过滤题目中的危险内容。先检测敏感词，后 HTML 转义。
+    返回处理后的 dict，新增 _flagged 和可能的 _error 字段。"""
+    # 0. 长度校验
+    stem = q.get('stem', '')
+    if len(stem) > MAX_STEM_LENGTH:
+        q['_flagged'] = True
+        q['_error'] = f"题干超过 {MAX_STEM_LENGTH} 字符"
+        return q
+    for key, val in q.get('options', {}).items():
+        if len(str(val)) > MAX_OPTION_LENGTH:
+            q['_flagged'] = True
+            q['_error'] = f"选项 {key} 超过 {MAX_OPTION_LENGTH} 字符"
+            return q
+
+    # 1. 先在原始文本上检测敏感词
+    raw_texts = []
+    for field in ['stem', 'explanation', 'knowledge']:
+        if q.get(field):
+            raw_texts.append(str(q[field]))
+    for value in q.get('options', {}).values():
+        raw_texts.append(str(value))
+    combined = '\n'.join(raw_texts).lower()
+    q['_flagged'] = any(word in combined for word in SENSITIVE_WORDS)
+
+    # 2. 后 HTML 转义
+    for field in ['stem', 'explanation', 'knowledge']:
+        if q.get(field):
+            q[field] = html.escape(str(q[field]))
+    for key in q.get('options', {}):
+        q['options'][key] = html.escape(str(q['options'][key]))
+
+    return q
