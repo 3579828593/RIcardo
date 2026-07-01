@@ -2,6 +2,7 @@
 """测试题库 CRUD + 权限"""
 import pytest
 import sys
+import io
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -252,3 +253,63 @@ def test_api_delete_bank():
     bank_id = create.get_json()['id']
     resp = client.delete(f"/api/banks/{bank_id}", headers={"X-CSRF-Token": csrf})
     assert resp.status_code == 200
+
+
+def test_api_import_csv_to_bank():
+    """POST /api/banks/<id>/import CSV 导入到指定题库"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    reg = client.post("/api/auth/register", json={
+        "student_id": "import001", "password": "test123456", "nickname": "导入测试"
+    })
+    csrf = reg.get_json()['csrf_token']
+    # 创建题库
+    create = client.post("/api/banks", json={"name": "导入题库", "course": "test"},
+                         headers={"X-CSRF-Token": csrf})
+    bank_id = create.get_json()['id']
+
+    # CSV 内容
+    csv_content = "course,chapter,type,stem,option_A,option_B,option_C,option_D,answer,explanation,knowledge\n"
+    csv_content += "test,1,single,导入测试题1,A选项,B选项,C选项,D选项,A,解析,知识点\n"
+    csv_content += "test,1,single,导入测试题2,A选项,B选项,C选项,D选项,B,解析,知识点\n"
+
+    resp = client.post(f"/api/banks/{bank_id}/import",
+                       data={"file": (io.BytesIO(csv_content.encode('utf-8-sig')), "test.csv")},
+                       content_type="multipart/form-data",
+                       headers={"X-CSRF-Token": csrf})
+    assert resp.status_code == 201
+    data = resp.get_json()
+    assert data['imported'] == 2
+    assert data['skipped'] == 0
+
+
+def test_api_import_to_other_user_bank():
+    """不能导入到别人的题库"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    # 用户 A 创建题库
+    reg_a = client.post("/api/auth/register", json={
+        "student_id": "owner001", "password": "test123456", "nickname": "Owner"
+    })
+    csrf_a = reg_a.get_json()['csrf_token']
+    create = client.post("/api/banks", json={"name": "A的题库", "course": "test"},
+                         headers={"X-CSRF-Token": csrf_a})
+    bank_id = create.get_json()['id']
+    # 登出
+    client.post("/api/auth/logout")
+    # 用户 B 登录
+    reg_b = client.post("/api/auth/register", json={
+        "student_id": "intruder001", "password": "test123456", "nickname": "Intruder"
+    })
+    csrf_b = reg_b.get_json()['csrf_token']
+    # 尝试导入到 A 的题库
+    csv_content = "course,chapter,type,stem,answer\n test,1,single,入侵题,A\n"
+    resp = client.post(f"/api/banks/{bank_id}/import",
+                       data={"file": (io.BytesIO(csv_content.encode()), "t.csv")},
+                       content_type="multipart/form-data",
+                       headers={"X-CSRF-Token": csrf_b})
+    assert resp.status_code == 403

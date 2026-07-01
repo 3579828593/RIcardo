@@ -20,7 +20,7 @@ sys.path.insert(0, str(BASE_DIR))
 from config import load_config
 from database import QuizDatabase
 from lite import render_lite_page
-from csv_importer import parse_csv, generate_template
+from csv_importer import parse_csv, generate_template, sanitize_question
 
 app = Flask(__name__, template_folder=str(BASE_DIR / "templates"), static_folder=str(BASE_DIR / "static"))
 # 避免 Flask/Jinja 解析 Vue 的 {{ }} 插值表达式。
@@ -702,6 +702,91 @@ def api_bank_progress(bank_id):
         "done": len(done_ids),
         "correct_rate": round(correct / total_answers, 4) if total_answers else 0,
     })
+
+
+@app.route("/api/banks/<int:bank_id>/import", methods=["POST"])
+def api_bank_import(bank_id):
+    """CSV 导入到指定题库"""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "未登录"}), 401
+
+    bank_data = db.get_bank(bank_id)
+    if not bank_data:
+        return jsonify({"error": "题库不存在"}), 404
+
+    bank = Bank(bank_data)
+    user_obj = User(user)
+    if not can_import_to_bank(user_obj, bank):
+        return jsonify({"error": "无权导入到此题库"}), 403
+
+    # 限流
+    if not check_rate_limit(db, f"import:user:{user['id']}", MAX_IMPORT_PER_DAY, 1440):
+        return jsonify({"error": f"今天导入次数已达上限 ({MAX_IMPORT_PER_DAY} 次)"}), 429
+
+    # 读取 CSV 内容
+    content = ""
+    if "file" in request.files:
+        raw = request.files["file"].read()
+        content = raw.decode("utf-8-sig", errors="replace")
+    else:
+        data = request.get_json(silent=True) or {}
+        content = data.get("content", "")
+
+    if not content or not content.strip():
+        return jsonify({"error": "CSV 内容为空"}), 400
+
+    result = parse_csv(content)
+    if not result["questions"]:
+        return jsonify({
+            "ok": False,
+            "error": "没有可导入的题目",
+            "parse_errors": result["errors"],
+        }), 400
+
+    if len(result["questions"]) > MAX_QUESTIONS_PER_IMPORT:
+        return jsonify({
+            "ok": False,
+            "error": f"单次导入不能超过 {MAX_QUESTIONS_PER_IMPORT} 题",
+        }), 400
+
+    # sanitize 每道题
+    flagged_count = 0
+    valid_questions = []
+    errors = list(result["errors"])
+    for i, q in enumerate(result["questions"]):
+        sq = sanitize_question(q)
+        if sq.get('_error'):
+            errors.append({"row": i + 2, "reason": sq['_error']})
+            continue
+        if sq.get('_flagged'):
+            flagged_count += 1
+        valid_questions.append(sq)
+
+    if not valid_questions:
+        return jsonify({
+            "ok": False,
+            "error": "所有题目都被过滤",
+            "parse_errors": errors,
+        }), 400
+
+    # 写入数据库
+    try:
+        import_result = db.batch_add_questions(valid_questions, bank_id=bank_id)
+        db.update_bank_question_count(bank_id)
+        return jsonify({
+            "ok": True,
+            "imported": import_result["added"],
+            "skipped": import_result["skipped"],
+            "flagged": flagged_count,
+            "errors": errors,
+        }), 201
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": f"数据库写入失败: {str(e)}",
+            "parse_errors": errors,
+        }), 500
 
 
 @app.errorhandler(404)
