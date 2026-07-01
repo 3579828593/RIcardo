@@ -32,6 +32,16 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
 
+from datetime import timedelta
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+
+from auth import (
+    hash_password, verify_password, validate_password, validate_student_id,
+    ensure_csrf_token, csrf_protect, check_rate_limit
+)
+from flask import session
+
 db = QuizDatabase(cfg["storage"]["db_path"], cfg["storage"]["backup_dir"])
 
 # 日志
@@ -145,6 +155,17 @@ def _check_answer(qtype: str, user_answer, correct_answer) -> bool:
     ua = str(user_answer).strip().upper() if isinstance(user_answer, str) else str(user_answer).strip()
     ca = str(correct_answer[0]).strip().upper() if correct_answer else ""
     return ua == ca
+
+
+@app.before_request
+def before_request_csrf():
+    """CSRF 防护：登录用户的非 GET 请求必须带 X-CSRF-Token。
+    /api/auth/ 路由豁免（登录/注册需要建立新 session）。"""
+    if request.path.startswith('/api/auth/'):
+        return None
+    result = csrf_protect()
+    if result is not None:
+        return result
 
 
 @app.route("/")
@@ -416,6 +437,103 @@ def reset_stats():
         return jsonify({"ok": True, "message": "答题记录已清除"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _get_current_user():
+    """获取当前登录用户，未登录返回 None"""
+    uid = session.get('user_id')
+    if not uid:
+        return None
+    return db.get_user_by_id(uid)
+
+
+@app.route("/api/auth/register", methods=["POST"])
+def api_register():
+    data = request.get_json(silent=True) or {}
+    student_id = (data.get("student_id") or "").strip()
+    password = data.get("password") or ""
+    nickname = (data.get("nickname") or "").strip()
+
+    ip = request.remote_addr or "unknown"
+    if not check_rate_limit(db, f"register:ip:{ip}", 5, 60):
+        return jsonify({"error": "注册过于频繁，请稍后再试"}), 429
+
+    ok, msg = validate_student_id(student_id)
+    if not ok:
+        return jsonify({"error": msg}), 400
+    ok, msg = validate_password(password)
+    if not ok:
+        return jsonify({"error": msg}), 400
+    if not nickname or len(nickname) > 32:
+        return jsonify({"error": "昵称不能为空且不超过 32 字符"}), 400
+
+    pw_hash = hash_password(password)
+    uid = db.create_user(student_id, pw_hash, nickname)
+    if uid is None:
+        return jsonify({"error": "学号已注册"}), 409
+
+    session.clear()
+    session['user_id'] = uid
+    session['role'] = 'student'
+    session.permanent = True
+    csrf_token = ensure_csrf_token()
+
+    sid = _get_session_id()
+    if sid != 'anon':
+        db.migrate_session_data(uid, sid)
+
+    return jsonify({
+        "id": uid, "student_id": student_id, "nickname": nickname,
+        "role": "student", "csrf_token": csrf_token,
+    }), 201
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_login():
+    data = request.get_json(silent=True) or {}
+    student_id = (data.get("student_id") or "").strip()
+    password = data.get("password") or ""
+
+    ip = request.remote_addr or "unknown"
+    if not check_rate_limit(db, f"login:ip:{ip}", 10, 10):
+        return jsonify({"error": "登录尝试过于频繁，请 10 分钟后再试"}), 429
+
+    user = db.get_user_by_student_id(student_id)
+    if not user or not verify_password(password, user['password_hash']):
+        return jsonify({"error": "学号或密码错误"}), 401
+
+    old_csrf = session.get('csrf_token')
+    session.clear()
+    if old_csrf:
+        session['csrf_token'] = old_csrf
+    session['user_id'] = user['id']
+    session['role'] = user['role']
+    session.permanent = True
+    csrf_token = ensure_csrf_token()
+
+    sid = _get_session_id()
+    if sid != 'anon':
+        db.migrate_session_data(user['id'], sid)
+
+    return jsonify({
+        "id": user['id'], "student_id": user['student_id'],
+        "nickname": user['nickname'], "role": user['role'],
+        "csrf_token": csrf_token,
+    })
+
+
+@app.route("/api/auth/me", methods=["GET"])
+def api_auth_me():
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "未登录"}), 401
+    return jsonify(user)
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_logout():
+    session.clear()
+    return jsonify({"ok": True})
 
 
 @app.errorhandler(404)

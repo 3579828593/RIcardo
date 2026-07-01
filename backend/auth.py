@@ -81,7 +81,8 @@ def check_rate_limit(db, key: str, max_count: int, window_minutes: int) -> bool:
             return False
         now_str = now.strftime('%Y-%m-%d %H:%M:%S')
         conn.execute(
-            "INSERT INTO rate_limits (key, count, window_start) VALUES (?, 1, ?)",
+            "INSERT INTO rate_limits (key, count, window_start) VALUES (?, 1, ?) "
+            "ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1",
             (key, now_str)
         )
     return True

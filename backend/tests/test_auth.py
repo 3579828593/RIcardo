@@ -202,3 +202,123 @@ def test_migrate_session_data_dedup():
             ).fetchone()[0]
             assert count == 0
         db.close()
+
+
+def test_register_api():
+    """POST /api/auth/register 注册成功"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    resp = client.post("/api/auth/register", json={
+        "student_id": "regtest001",
+        "password": "test123456",
+        "nickname": "注册测试"
+    })
+    assert resp.status_code == 201
+    data = resp.get_json()
+    assert data['student_id'] == 'regtest001'
+    assert data['nickname'] == '注册测试'
+    assert data['role'] == 'student'
+    assert 'csrf_token' in data
+
+
+def test_register_duplicate():
+    """重复学号注册失败"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    client.post("/api/auth/register", json={
+        "student_id": "duptest001", "password": "test123456", "nickname": "第一次"
+    })
+    resp = client.post("/api/auth/register", json={
+        "student_id": "duptest001", "password": "test123456", "nickname": "第二次"
+    })
+    assert resp.status_code == 409
+
+
+def test_login_api():
+    """POST /api/auth/login 登录成功"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    client.post("/api/auth/register", json={
+        "student_id": "logintest001", "password": "test123456", "nickname": "登录测试"
+    })
+    resp = client.post("/api/auth/login", json={
+        "student_id": "logintest001", "password": "test123456"
+    })
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['student_id'] == 'logintest001'
+    assert 'csrf_token' in data
+
+
+def test_login_wrong_password():
+    """错误密码登录失败"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    client.post("/api/auth/register", json={
+        "student_id": "wrongpw001", "password": "correct123", "nickname": "测试"
+    })
+    resp = client.post("/api/auth/login", json={
+        "student_id": "wrongpw001", "password": "wrongpassword"
+    })
+    assert resp.status_code == 401
+
+
+def test_auth_me():
+    """GET /api/auth/me 返回当前登录用户"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    resp = client.get("/api/auth/me")
+    assert resp.status_code == 401
+    client.post("/api/auth/register", json={
+        "student_id": "metest001", "password": "test123456", "nickname": "Me测试"
+    })
+    resp = client.get("/api/auth/me")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['student_id'] == 'metest001'
+
+
+def test_logout():
+    """POST /api/auth/logout 登出"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    client.post("/api/auth/register", json={
+        "student_id": "logout001", "password": "test123456", "nickname": "登出测试"
+    })
+    resp = client.post("/api/auth/logout")
+    assert resp.status_code == 200
+    resp = client.get("/api/auth/me")
+    assert resp.status_code == 401
+
+
+def test_csrf_protection():
+    """登录后非 GET 请求需要 CSRF token"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    reg = client.post("/api/auth/register", json={
+        "student_id": "csrftest001", "password": "test123456", "nickname": "CSRF测试"
+    })
+    csrf = reg.get_json()['csrf_token']
+    client.post("/api/auth/login", json={
+        "student_id": "csrftest001", "password": "test123456"
+    })
+    # 不带 CSRF → 403
+    resp = client.post("/api/favorites/1")
+    assert resp.status_code == 403
+    # 带 CSRF → 不是 403
+    resp = client.post("/api/favorites/1", headers={"X-CSRF-Token": csrf})
+    assert resp.status_code != 403
