@@ -142,6 +142,8 @@ class QuizDatabase:
             """)
             # 第二步：后迁移 - 重建旧表以更新 UNIQUE 约束
             self._post_migrate(conn)
+            # 第三步：迁移到 bank_id 架构
+            self._migrate_to_banks(conn)
 
     def _pre_migrate(self, conn):
         """为旧版表添加 session_id 列（在 executescript 之前运行）"""
@@ -174,6 +176,106 @@ class QuizDatabase:
                     conn.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}(session_id)")
             except Exception:
                 pass
+
+    def _migrate_to_banks(self, conn):
+        """Step 0 迁移：questions 表重建为 bank_id 架构 + 创建 question_banks 表"""
+        # 检查是否已迁移
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(questions)").fetchall()]
+        if 'bank_id' in cols:
+            # 已迁移，确保 question_banks 表和官方记录存在
+            self._ensure_question_banks_table(conn)
+            self._ensure_official_bank(conn)
+            return
+
+        # 1. 创建 question_banks 表（如果不存在）
+        self._ensure_question_banks_table(conn)
+
+        # 2. 记录旧表数据量
+        old_count = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+
+        # 3. 创建新表
+        conn.execute("""
+            CREATE TABLE questions_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_id INTEGER,
+                bank_id INTEGER NOT NULL DEFAULT 1,
+                course TEXT NOT NULL,
+                chapter INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                stem TEXT NOT NULL,
+                options_json TEXT,
+                answer_json TEXT,
+                explanation TEXT DEFAULT '',
+                knowledge TEXT DEFAULT '',
+                flagged INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(bank_id, stem),
+                FOREIGN KEY (bank_id) REFERENCES question_banks(id)
+            )
+        """)
+
+        # 4. 拷贝数据（bank_id 默认为 1 = 官方题库）
+        conn.execute("""
+            INSERT INTO questions_new (original_id, bank_id, course, chapter, type, stem,
+                options_json, answer_json, explanation, knowledge, created_at)
+            SELECT id, 1, course, chapter, type, stem,
+                options_json, answer_json, explanation, knowledge, created_at
+            FROM questions
+        """)
+
+        # 5. 校验数量
+        new_count = conn.execute("SELECT COUNT(*) FROM questions_new").fetchone()[0]
+        if new_count != old_count:
+            raise RuntimeError(f"迁移数据量不一致: 旧={old_count}, 新={new_count}")
+
+        # 6. 替换表
+        conn.execute("DROP TABLE questions")
+        conn.execute("ALTER TABLE questions_new RENAME TO questions")
+
+        # 7. 创建索引
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_q_course ON questions(course)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_q_chapter ON questions(chapter)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_q_type ON questions(type)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_q_knowledge ON questions(knowledge)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_questions_bank_id ON questions(bank_id)")
+
+        # 8. 插入官方题库记录（question_count 动态计算）
+        self._ensure_official_bank(conn)
+
+    def _ensure_question_banks_table(self, conn):
+        """确保 question_banks 表存在"""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS question_banks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_id INTEGER,
+                name TEXT NOT NULL,
+                course TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                visibility TEXT NOT NULL DEFAULT 'private'
+                    CHECK (visibility IN ('private', 'public', 'unlisted')),
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active', 'hidden', 'deleted', 'reviewing')),
+                question_count INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (owner_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_question_banks_owner ON question_banks(owner_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_question_banks_visibility ON question_banks(visibility)")
+
+    def _ensure_official_bank(self, conn):
+        """确保官方题库记录存在（id=1, owner_id=NULL）"""
+        row = conn.execute("SELECT 1 FROM question_banks WHERE id = 1").fetchone()
+        if row is None:
+            count = conn.execute("SELECT COUNT(*) FROM questions WHERE bank_id = 1").fetchone()[0]
+            conn.execute("""
+                INSERT INTO question_banks (id, owner_id, name, course, visibility, status, question_count)
+                VALUES (1, NULL, '官方题库', 'weather', 'public', 'active', ?)
+            """, (count,))
+        else:
+            # 更新 question_count
+            count = conn.execute("SELECT COUNT(*) FROM questions WHERE bank_id = 1").fetchone()[0]
+            conn.execute("UPDATE question_banks SET question_count = ? WHERE id = 1", (count,))
 
     def backup(self):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
