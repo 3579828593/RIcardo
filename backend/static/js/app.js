@@ -339,7 +339,13 @@ createApp({
       try {
         const resp = await fetch('/api/auth/me');
         if (resp.ok) {
-          currentUser.value = await resp.json();
+          const data = await resp.json();
+          currentUser.value = data;
+          csrfToken.value = data.csrf_token || '';
+          if (currentUser.value) {
+            loadMyBanks();
+            loadSubscribedBanks();
+          }
         }
       } catch (e) {}
     }

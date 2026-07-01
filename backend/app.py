@@ -542,7 +542,13 @@ def api_auth_me():
     user = _get_current_user()
     if not user:
         return jsonify({"error": "未登录"}), 401
-    return jsonify(user)
+    return jsonify({
+        "id": user["id"],
+        "student_id": user["student_id"],
+        "nickname": user["nickname"],
+        "role": user["role"],
+        "csrf_token": session.get("csrf_token", ""),
+    })
 
 
 @app.route("/api/auth/logout", methods=["POST"])
