@@ -207,8 +207,10 @@ class QuizDatabase:
                 answer_json TEXT,
                 explanation TEXT DEFAULT '',
                 knowledge TEXT DEFAULT '',
+                difficulty TEXT DEFAULT 'medium',
                 flagged INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(bank_id, stem),
                 FOREIGN KEY (bank_id) REFERENCES question_banks(id)
             )
@@ -217,9 +219,9 @@ class QuizDatabase:
         # 4. 拷贝数据（bank_id 默认为 1 = 官方题库）
         conn.execute("""
             INSERT INTO questions_new (original_id, bank_id, course, chapter, type, stem,
-                options_json, answer_json, explanation, knowledge, created_at)
+                options_json, answer_json, explanation, knowledge, difficulty, created_at, updated_at)
             SELECT id, 1, course, chapter, type, stem,
-                options_json, answer_json, explanation, knowledge, created_at
+                options_json, answer_json, explanation, knowledge, difficulty, created_at, updated_at
             FROM questions
         """)
 
