@@ -283,6 +283,17 @@ class QuizDatabase:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_question_banks_owner ON question_banks(owner_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_question_banks_visibility ON question_banks(visibility)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS bank_subscriptions (
+                user_id INTEGER NOT NULL,
+                bank_id INTEGER NOT NULL,
+                subscribed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, bank_id),
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (bank_id) REFERENCES question_banks(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bank_subscriptions_user ON bank_subscriptions(user_id)")
 
     def _ensure_official_bank(self, conn):
         """确保官方题库记录存在（id=1, owner_id=NULL）"""
@@ -297,6 +308,81 @@ class QuizDatabase:
             # 更新 question_count
             count = conn.execute("SELECT COUNT(*) FROM questions WHERE bank_id = 1").fetchone()[0]
             conn.execute("UPDATE question_banks SET question_count = ? WHERE id = 1", (count,))
+
+    def create_bank(self, owner_id: int, name: str, course: str,
+                    description: str = '', visibility: str = 'private') -> int:
+        with self.connection() as conn:
+            cur = conn.execute(
+                """INSERT INTO question_banks (owner_id, name, course, description, visibility)
+                VALUES (?, ?, ?, ?, ?)""",
+                (owner_id, name, course, description, visibility)
+            )
+            return cur.lastrowid
+
+    def get_bank(self, bank_id: int) -> dict:
+        with self.connection() as conn:
+            row = conn.execute("SELECT * FROM question_banks WHERE id = ?", (bank_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_banks(self, owner_id: int = None, visibility: str = None,
+                   scope: str = None, user_id: int = None) -> list:
+        with self.connection() as conn:
+            if scope == 'official':
+                rows = conn.execute(
+                    "SELECT * FROM question_banks WHERE owner_id IS NULL AND status = 'active' ORDER BY id"
+                ).fetchall()
+            elif scope == 'mine' and owner_id:
+                rows = conn.execute(
+                    "SELECT * FROM question_banks WHERE owner_id = ? AND status != 'deleted' ORDER BY created_at DESC",
+                    (owner_id,)
+                ).fetchall()
+            elif scope == 'public':
+                rows = conn.execute(
+                    "SELECT * FROM question_banks WHERE visibility = 'public' AND status = 'active' AND owner_id IS NOT NULL ORDER BY created_at DESC"
+                ).fetchall()
+            elif scope == 'subscribed' and user_id:
+                rows = conn.execute(
+                    """SELECT b.* FROM question_banks b
+                    JOIN bank_subscriptions s ON b.id = s.bank_id
+                    WHERE s.user_id = ? AND b.status = 'active'
+                    ORDER BY s.subscribed_at DESC""",
+                    (user_id,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM question_banks WHERE status != 'deleted' ORDER BY id"
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_bank(self, bank_id: int) -> bool:
+        with self.connection() as conn:
+            cur = conn.execute("UPDATE question_banks SET status = 'deleted' WHERE id = ?", (bank_id,))
+            return cur.rowcount > 0
+
+    def update_bank(self, bank_id: int, data: dict) -> bool:
+        allowed = {'name', 'course', 'description', 'visibility', 'status'}
+        fields = {k: v for k, v in data.items() if k in allowed}
+        if not fields:
+            return False
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [bank_id]
+        with self.connection() as conn:
+            conn.execute(f"UPDATE question_banks SET {sets} WHERE id = ?", values)
+            return True
+
+    def update_bank_question_count(self, bank_id: int):
+        with self.connection() as conn:
+            conn.execute(
+                "UPDATE question_banks SET question_count = (SELECT COUNT(*) FROM questions WHERE bank_id = ?) WHERE id = ?",
+                (bank_id, bank_id)
+            )
+
+    def count_user_banks(self, owner_id: int) -> int:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM question_banks WHERE owner_id = ? AND status != 'deleted'",
+                (owner_id,)
+            ).fetchone()[0]
 
     def backup(self):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")

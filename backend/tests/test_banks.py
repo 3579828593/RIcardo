@@ -88,3 +88,76 @@ def test_can_import_same_as_write():
     bank = _make_bank(owner_id=5)
     user = _make_user(5)
     assert can_import_to_bank(user, bank) == can_write_bank(user, bank)
+
+
+def test_create_bank():
+    """创建题库"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        uid = db.create_user("bank001", "hash", "Bank用户")
+        bank_id = db.create_bank(owner_id=uid, name="我的题库", course="test")
+        assert bank_id is not None and bank_id > 1
+        bank = db.get_bank(bank_id)
+        assert bank['name'] == '我的题库'
+        assert bank['owner_id'] == uid
+        assert bank['visibility'] == 'private'
+        db.close()
+
+
+def test_list_banks_by_owner():
+    """列出用户自己的题库"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        uid = db.create_user("list001", "hash", "List用户")
+        db.create_bank(owner_id=uid, name="题库A", course="test")
+        db.create_bank(owner_id=uid, name="题库B", course="english")
+        banks = db.list_banks(owner_id=uid, scope="mine")
+        assert len(banks) == 2
+        db.close()
+
+
+def test_list_official_banks():
+    """列出官方题库"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        banks = db.list_banks(scope="official")
+        assert len(banks) == 1
+        assert banks[0]['name'] == '官方题库'
+        db.close()
+
+
+def test_delete_bank():
+    """删除题库（软删除：status=deleted）"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        uid = db.create_user("del001", "hash", "Del用户")
+        bank_id = db.create_bank(owner_id=uid, name="待删除", course="test")
+        ok = db.delete_bank(bank_id)
+        assert ok is True
+        bank = db.get_bank(bank_id)
+        assert bank['status'] == 'deleted'
+        db.close()
+
+
+def test_update_bank_question_count():
+    """更新题库题目计数"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        uid = db.create_user("count001", "hash", "Count用户")
+        bank_id = db.create_bank(owner_id=uid, name="计数题库", course="test")
+        db.add_question({"course": "test", "chapter": 1, "type": "single",
+                         "stem": "count_test_1", "options": {}, "answer": ["A"]}, bank_id=bank_id)
+        db.update_bank_question_count(bank_id)
+        bank = db.get_bank(bank_id)
+        assert bank['question_count'] == 1
+        db.close()
