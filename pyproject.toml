@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "slow: 标记慢测试",
+    "e2e: 端到端测试",
+]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["backend/tests/*", "backend/data/*", "backend/lite.py", "backend/render_init.py"]
+
+[tool.coverage.report]
+fail_under = 40
+show_missing = true

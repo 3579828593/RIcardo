@@ -1,7 +1,7 @@
 # ============================================
 # 期末冲刺刷题系统 — 进度快照
 # 新会话开始时读取此文件了解当前状态
-# 最后更新: 2026-06-29 18:00 (安全加固+核心功能修复+UX优化)
+# 最后更新: 2026-07-02 (UGC题库系统完成+安全加固闭环)
 # ============================================
 
 project:
@@ -9,16 +9,16 @@ project:
   url: https://3579828593.pythonanywhere.com
   repo: https://github.com/3579828593/RIcardo.git
   questions: 351
-  tests: 77
+  tests: 151
 
 current_state:
-  phase: 安全加固 + 核心功能修复 完成
-  status: 稳定，已部署线上，2个安全漏洞已修复，核心功能已修复
-  last_commit: 3541310
-  last_deploy: 2026-06-29 17:55
-  sw_version: v8
-  tests: 77
-  next_milestone: 阶段3 用户账号体系（暑假第5-6周）
+  phase: UGC 题库系统 + 安全加固 完成
+  status: 稳定，已部署线上，UGC题库系统完成，P0安全问题全部修复
+  last_commit: 1a6442e
+  last_deploy: 2026-07-02
+  sw_version: v12
+  tests: 151
+  next_milestone: 补 API/架构/安全/测试文档 → 建质量门禁 → 统一身份模型 → 拆分模块
 
 achievements:
   - phase: Phase 1
@@ -72,6 +72,18 @@ achievements:
       P0: 管理 Tab 隐藏入口(?admin=1) + 加载状态 + 错误显示
       P1: 骨架屏CSS变量 + 主题预加载 + NetworkFirst 5s超时 + safe-area
       M: 多选题类型校验 + CSV导入异常处理 + elapsed校验 + 401统一处理
+  - phase: UGC 题库系统
+    name: UGC 题库系统 + 安全加固
+    commit: 5c74ab6 + 1a6442e
+    status: done
+    notes: |
+      Step 0: questions 表重建 + question_banks 表
+      Step 1: 用户系统（pbkdf2 + Flask session + CSRF + 限流）
+      Step 2: 私有题库 CRUD + CSV 导入 + 进度隔离
+      Step 3: 公开题库 + 订阅 + 举报
+      P0 安全修复: /api/questions 权限校验 + /api/submit 权限校验 + flagged 持久化
+      + answer sanitize + subscribe status 检查 + 登录限流逻辑
+      pytest 151 项全通过
 
 decisions:
   - id: D001
@@ -133,3 +145,12 @@ known_issues:
   - issue: 速率限制未实现
     impact: 中
     workaround: 后续引入 flask-limiter
+  - issue: 双身份模型（session_id 与 user_id 并存）
+    impact: 中
+    workaround: 后续统一身份模型，session_id → user_id 迁移
+  - issue: app.py 胖控制器（单文件路由过多）
+    impact: 中
+    workaround: 后续按 Blueprint 拆分（auth/banks/questions/admin）
+  - issue: database.py 职责过载（表初始化+迁移+CRUD+查询混在一起）
+    impact: 中
+    workaround: 后续按 Repository 模式拆分
