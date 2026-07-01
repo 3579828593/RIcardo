@@ -90,6 +90,21 @@ createApp({
     const showCombo = ref(false);
     let comboTimeout = null;
 
+    // ========== 认证状态 ==========
+    const currentUser = ref(null);
+    const csrfToken = ref('');
+    const showLoginModal = ref(false);
+    const loginMode = ref('login');
+    const loginForm = reactive({ student_id: '', password: '', nickname: '' });
+    const loginError = ref('');
+
+    // ========== 题库状态 ==========
+    const currentBankId = ref(1);
+    const myBanks = ref([]);
+    const officialBanks = ref([]);
+    const subscribedBanks = ref([]);
+    const showBankSelector = ref(false);
+
     // ========== localStorage 持久化 ==========
     const STORAGE_KEY = 'quiz_state_v1';
     function saveState() {
@@ -303,6 +318,138 @@ createApp({
       return fetch(url, options);
     }
 
+    // ========== CSRF + 认证请求 ==========
+    // 在 apiFetch 基础上附加 CSRF token（写操作）与登录态失效处理
+    async function authFetch(url, options = {}) {
+      if (!options.headers) options.headers = {};
+      if (csrfToken.value && options.method && options.method !== 'GET') {
+        options.headers['X-CSRF-Token'] = csrfToken.value;
+      }
+      options.headers['X-Session-Id'] = sessionId;
+      const resp = await fetch(url, options);
+      if (resp.status === 401) {
+        currentUser.value = null;
+        csrfToken.value = '';
+      }
+      return resp;
+    }
+
+    // ========== 认证方法 ==========
+    async function checkAuth() {
+      try {
+        const resp = await fetch('/api/auth/me');
+        if (resp.ok) {
+          currentUser.value = await resp.json();
+        }
+      } catch (e) {}
+    }
+
+    async function submitLogin() {
+      loginError.value = '';
+      const url = loginMode.value === 'login' ? '/api/auth/login' : '/api/auth/register';
+      const body = loginMode.value === 'login'
+        ? { student_id: loginForm.student_id, password: loginForm.password }
+        : { student_id: loginForm.student_id, password: loginForm.password, nickname: loginForm.nickname };
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          currentUser.value = data;
+          csrfToken.value = data.csrf_token;
+          showLoginModal.value = false;
+          loginForm.student_id = '';
+          loginForm.password = '';
+          loginForm.nickname = '';
+          await loadMyBanks();
+          await loadSubscribedBanks();
+          showToast('登录成功', 'success');
+        } else {
+          loginError.value = data.error || '操作失败';
+        }
+      } catch (e) {
+        loginError.value = '网络请求失败，请稍后重试';
+      }
+    }
+
+    async function logout() {
+      try {
+        await authFetch('/api/auth/logout', { method: 'POST' });
+      } catch (e) {}
+      currentUser.value = null;
+      csrfToken.value = '';
+      currentBankId.value = 1;
+      await loadAllForSingleMode();
+      showToast('已退出登录', 'info');
+    }
+
+    // ========== 题库方法 ==========
+    async function loadMyBanks() {
+      if (!currentUser.value) { myBanks.value = []; return; }
+      try {
+        const resp = await fetch('/api/banks?scope=mine');
+        if (resp.ok) myBanks.value = (await resp.json()).banks || [];
+      } catch (e) {}
+    }
+
+    async function loadOfficialBanks() {
+      try {
+        const resp = await fetch('/api/banks?scope=official');
+        if (resp.ok) officialBanks.value = (await resp.json()).banks || [];
+      } catch (e) {}
+    }
+
+    async function loadSubscribedBanks() {
+      if (!currentUser.value) { subscribedBanks.value = []; return; }
+      try {
+        const resp = await fetch('/api/banks?scope=subscribed');
+        if (resp.ok) subscribedBanks.value = (await resp.json()).banks || [];
+      } catch (e) {}
+    }
+
+    async function selectBank(bankId) {
+      currentBankId.value = bankId;
+      showBankSelector.value = false;
+      await loadAllForSingleMode();
+      if (currentUser.value) {
+        try {
+          const resp = await fetch(`/api/banks/${bankId}/progress`);
+          if (resp.ok) {
+            const progress = await resp.json();
+            if (progress && Array.isArray(progress.done_question_ids)) {
+              doneSet.value = new Set(progress.done_question_ids);
+            }
+          }
+        } catch (e) {}
+      }
+    }
+
+    async function createBank() {
+      const name = prompt('题库名称:');
+      if (!name) return;
+      const resp = await authFetch('/api/banks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, course: 'custom' })
+      });
+      if (resp.ok) {
+        await loadMyBanks();
+        const bank = await resp.json();
+        await selectBank(bank.id);
+        showToast('题库已创建', 'success');
+      } else {
+        try {
+          const data = await resp.json();
+          showToast(data.error || '创建失败', 'error');
+        } catch (e) {
+          showToast('创建失败', 'error');
+        }
+      }
+    }
+
     // 带加载状态的 fetch 封装（R3: 额外标记当前 Tab 的加载态）
     const fetchWithLoading = async (url, options = {}) => {
       const tab = activeTab.value || 'quiz';
@@ -426,6 +573,7 @@ createApp({
       if (selectedTypes.value.length > 0) params.set('type', selectedTypes.value.join(','));
       if (filter.chapter) params.set('chapter', filter.chapter);
       if (filter.keyword) params.set('keyword', filter.keyword);
+      if (currentBankId.value) params.set('bank_id', currentBankId.value);
       const data = await fetchWithLoading('/api/questions?' + params);
       questions.value = data.items || [];
       prepareQuestionState(questions.value);
@@ -520,6 +668,7 @@ createApp({
           if (selectedTypes.value.length > 0) params.set('type', selectedTypes.value.join(','));
           if (filter.chapter) params.set('chapter', filter.chapter);
           if (filter.keyword) params.set('keyword', filter.keyword);
+          params.set('bank_id', currentBankId.value);
           const res = await apiFetch('/api/questions?' + params);
           const data = await res.json();
           allItems = allItems.concat(data.items || []);
@@ -1262,6 +1411,9 @@ createApp({
       loadChapters();
       loadCourseCounts();
       loadStats();
+      // 认证 & 题库初始化
+      checkAuth();
+      loadOfficialBanks();
       // 如果在线且有离线队列，自动同步
       if (navigator.onLine) syncOfflineQueue();
       loadMistakes(mistakePage.value);
@@ -1322,6 +1474,11 @@ createApp({
       adminFilter, importResult, importing, adminVisiblePages,
       adminLogin, adminLogout, loadAdminQuestions, downloadTemplate,
       uploadCSV, deleteAdminQuestion, onAdminFilterChange,
+      // 认证 & 题库
+      currentUser, csrfToken, showLoginModal, loginMode, loginForm, loginError,
+      currentBankId, myBanks, officialBanks, subscribedBanks, showBankSelector,
+      authFetch, checkAuth, submitLogin, logout,
+      loadMyBanks, loadOfficialBanks, loadSubscribedBanks, selectBank, createBank,
     };
   }
 }).mount('#app');
