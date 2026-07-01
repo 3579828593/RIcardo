@@ -139,6 +139,23 @@ class QuizDatabase:
                     key TEXT PRIMARY KEY,
                     value TEXT
                 );
+
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    student_id TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    nickname TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'student'
+                        CHECK (role IN ('student', 'admin')),
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS rate_limits (
+                    key TEXT NOT NULL,
+                    count INTEGER NOT NULL,
+                    window_start TEXT NOT NULL,
+                    PRIMARY KEY (key, window_start)
+                );
             """)
             # 第二步：后迁移 - 重建旧表以更新 UNIQUE 约束
             self._post_migrate(conn)
@@ -601,3 +618,32 @@ class QuizDatabase:
         d["options"] = json.loads(d.pop("options_json", "{}"))
         d["answer"] = json.loads(d.pop("answer_json", "[]"))
         return d
+
+    def create_user(self, student_id: str, password_hash: str, nickname: str) -> int:
+        """创建用户。成功返回 user_id，学号重复返回 None。"""
+        try:
+            with self.connection() as conn:
+                cur = conn.execute(
+                    "INSERT INTO users (student_id, password_hash, nickname) VALUES (?, ?, ?)",
+                    (student_id, password_hash, nickname)
+                )
+                return cur.lastrowid
+        except sqlite3.IntegrityError:
+            return None
+
+    def get_user_by_student_id(self, student_id: str) -> dict:
+        """按学号查询用户（含密码哈希，用于登录验证）"""
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE student_id = ?", (student_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_user_by_id(self, user_id: int) -> dict:
+        """按 ID 查询用户（不含密码哈希）"""
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT id, student_id, nickname, role, created_at FROM users WHERE id = ?",
+                (user_id,)
+            ).fetchone()
+        return dict(row) if row else None

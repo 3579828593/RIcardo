@@ -71,3 +71,71 @@ def test_ensure_csrf_token():
         t2 = ensure_csrf_token()
         assert t1 == t2  # 同一 session 内稳定
         assert len(t1) == 32  # 16 bytes hex
+
+
+def test_users_table_exists():
+    """users 表存在且有正确结构"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        with db.connection() as conn:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+        for expected in ['id', 'student_id', 'password_hash', 'nickname', 'role', 'created_at']:
+            assert expected in cols, f"users 表缺少 {expected} 列"
+        db.close()
+
+
+def test_rate_limits_table_exists():
+    """rate_limits 表存在"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        with db.connection() as conn:
+            tables = [r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()]
+        assert 'rate_limits' in tables
+        db.close()
+
+
+def test_create_user():
+    """create_user 正确创建用户"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        uid = db.create_user("2024001", "hashed_password", "张三")
+        assert uid is not None and uid > 0
+        user = db.get_user_by_student_id("2024001")
+        assert user is not None
+        assert user['nickname'] == '张三'
+        assert user['role'] == 'student'
+        db.close()
+
+
+def test_create_user_duplicate():
+    """重复学号注册失败"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        db.create_user("2024001", "hash1", "张三")
+        uid2 = db.create_user("2024001", "hash2", "李四")
+        assert uid2 is None
+        db.close()
+
+
+def test_get_user_by_id():
+    """get_user_by_id 返回用户信息（不含密码哈希）"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        uid = db.create_user("2024002", "hashed", "王五")
+        user = db.get_user_by_id(uid)
+        assert user is not None
+        assert user['student_id'] == '2024002'
+        assert 'password_hash' not in user
+        db.close()
