@@ -440,6 +440,27 @@ class QuizDatabase:
             )
             return cur.rowcount > 0
 
+    def subscribe_bank(self, user_id: int, bank_id: int) -> bool:
+        """订阅题库。返回 True 表示新订阅，False 表示已订阅。"""
+        try:
+            with self.connection() as conn:
+                conn.execute(
+                    "INSERT INTO bank_subscriptions (user_id, bank_id) VALUES (?, ?)",
+                    (user_id, bank_id)
+                )
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def unsubscribe_bank(self, user_id: int, bank_id: int) -> bool:
+        """退订题库。"""
+        with self.connection() as conn:
+            cur = conn.execute(
+                "DELETE FROM bank_subscriptions WHERE user_id = ? AND bank_id = ?",
+                (user_id, bank_id)
+            )
+            return cur.rowcount > 0
+
     def backup(self):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         dst = os.path.join(self.backup_dir, f"quiz_{ts}.db")

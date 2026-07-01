@@ -380,3 +380,94 @@ def test_admin_handle_report():
                       headers={"X-Admin-Token": "test-admin-token"})
     assert resp.status_code == 200
     assert resp.get_json()['status'] == 'resolved'
+
+
+def test_subscribe_bank():
+    """POST /api/banks/<id>/subscribe 订阅公开题库"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    # 用户 A 创建公开题库
+    reg_a = client.post("/api/auth/register", json={
+        "student_id": "pubowner001", "password": "test123456", "nickname": "PubOwner"
+    })
+    csrf_a = reg_a.get_json()['csrf_token']
+    create = client.post("/api/banks", json={
+        "name": "公开题库", "course": "test", "visibility": "public"
+    }, headers={"X-CSRF-Token": csrf_a})
+    bank_id = create.get_json()['id']
+    client.post("/api/auth/logout")
+
+    # 用户 B 订阅
+    reg_b = client.post("/api/auth/register", json={
+        "student_id": "subscriber001", "password": "test123456", "nickname": "Sub"
+    })
+    csrf_b = reg_b.get_json()['csrf_token']
+    resp = client.post(f"/api/banks/{bank_id}/subscribe",
+                       headers={"X-CSRF-Token": csrf_b})
+    assert resp.status_code == 200
+
+    # 查看已订阅
+    resp = client.get("/api/banks?scope=subscribed")
+    assert resp.status_code == 200
+    banks = resp.get_json()['banks']
+    assert any(b['id'] == bank_id for b in banks)
+
+
+def test_unsubscribe_bank():
+    """DELETE /api/banks/<id>/subscribe 退订"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    # 创建公开题库
+    reg_a = client.post("/api/auth/register", json={
+        "student_id": "unsubowner001", "password": "test123456", "nickname": "Owner"
+    })
+    csrf_a = reg_a.get_json()['csrf_token']
+    create = client.post("/api/banks", json={
+        "name": "退订测试", "course": "test", "visibility": "public"
+    }, headers={"X-CSRF-Token": csrf_a})
+    bank_id = create.get_json()['id']
+    client.post("/api/auth/logout")
+
+    # 订阅
+    reg_b = client.post("/api/auth/register", json={
+        "student_id": "unsub001", "password": "test123456", "nickname": "Unsub"
+    })
+    csrf_b = reg_b.get_json()['csrf_token']
+    client.post(f"/api/banks/{bank_id}/subscribe", headers={"X-CSRF-Token": csrf_b})
+    # 退订
+    resp = client.delete(f"/api/banks/{bank_id}/subscribe",
+                         headers={"X-CSRF-Token": csrf_b})
+    assert resp.status_code == 200
+    # 确认已退订
+    resp = client.get("/api/banks?scope=subscribed")
+    banks = resp.get_json()['banks']
+    assert not any(b['id'] == bank_id for b in banks)
+
+
+def test_cannot_subscribe_private_bank():
+    """不能订阅私有题库"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    reg_a = client.post("/api/auth/register", json={
+        "student_id": "privowner001", "password": "test123456", "nickname": "PrivOwner"
+    })
+    csrf_a = reg_a.get_json()['csrf_token']
+    create = client.post("/api/banks", json={
+        "name": "私有题库", "course": "test", "visibility": "private"
+    }, headers={"X-CSRF-Token": csrf_a})
+    bank_id = create.get_json()['id']
+    client.post("/api/auth/logout")
+
+    reg_b = client.post("/api/auth/register", json={
+        "student_id": "attacker001", "password": "test123456", "nickname": "Attacker"
+    })
+    csrf_b = reg_b.get_json()['csrf_token']
+    resp = client.post(f"/api/banks/{bank_id}/subscribe",
+                       headers={"X-CSRF-Token": csrf_b})
+    assert resp.status_code == 403

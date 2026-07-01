@@ -843,6 +843,30 @@ def api_admin_handle_report(report_id):
     return jsonify({"ok": True, "status": status})
 
 
+@app.route("/api/banks/<int:bank_id>/subscribe", methods=["POST", "DELETE"])
+def api_bank_subscribe(bank_id):
+    """订阅/退订公开题库"""
+    user = _get_current_user()
+    if not user:
+        return jsonify({"error": "未登录"}), 401
+
+    bank_data = db.get_bank(bank_id)
+    if not bank_data:
+        return jsonify({"error": "题库不存在"}), 404
+
+    bank = Bank(bank_data)
+
+    if request.method == "POST":
+        # 只能订阅公开题库
+        if bank.visibility != 'public':
+            return jsonify({"error": "只能订阅公开题库"}), 403
+        db.subscribe_bank(user['id'], bank_id)
+        return jsonify({"ok": True})
+    else:
+        db.unsubscribe_bank(user['id'], bank_id)
+        return jsonify({"ok": True})
+
+
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Not found"}), 404
