@@ -161,3 +161,94 @@ def test_update_bank_question_count():
         bank = db.get_bank(bank_id)
         assert bank['question_count'] == 1
         db.close()
+
+
+def test_api_create_bank():
+    """POST /api/banks 创建题库"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    reg = client.post("/api/auth/register", json={
+        "student_id": "apibank001", "password": "test123456", "nickname": "API Bank"
+    })
+    csrf = reg.get_json()['csrf_token']
+    resp = client.post("/api/banks", json={
+        "name": "我的API题库", "course": "test"
+    }, headers={"X-CSRF-Token": csrf})
+    assert resp.status_code == 201
+    data = resp.get_json()
+    assert data['name'] == '我的API题库'
+    assert data['visibility'] == 'private'
+
+
+def test_api_create_bank_not_logged_in():
+    """未登录不能创建题库"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    resp = client.post("/api/banks", json={"name": "test", "course": "test"})
+    assert resp.status_code == 401
+
+
+def test_api_list_my_banks():
+    """GET /api/banks?scope=mine 列出我的题库"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    reg = client.post("/api/auth/register", json={
+        "student_id": "listbk001", "password": "test123456", "nickname": "List"
+    })
+    csrf = reg.get_json()['csrf_token']
+    client.post("/api/banks", json={"name": "题库1", "course": "test"},
+                headers={"X-CSRF-Token": csrf})
+    client.post("/api/banks", json={"name": "题库2", "course": "english"},
+                headers={"X-CSRF-Token": csrf})
+    resp = client.get("/api/banks?scope=mine")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data['banks']) == 2
+
+
+def test_api_list_official_banks():
+    """GET /api/banks?scope=official 列出官方题库"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    resp = client.get("/api/banks?scope=official")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data['banks']) >= 1
+    assert data['banks'][0]['name'] == '官方题库'
+
+
+def test_api_get_bank():
+    """GET /api/banks/<id> 获取题库信息"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    resp = client.get("/api/banks/1")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['name'] == '官方题库'
+
+
+def test_api_delete_bank():
+    """DELETE /api/banks/<id> 删除题库"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    reg = client.post("/api/auth/register", json={
+        "student_id": "delbk001", "password": "test123456", "nickname": "Del"
+    })
+    csrf = reg.get_json()['csrf_token']
+    create = client.post("/api/banks", json={"name": "待删", "course": "test"},
+                         headers={"X-CSRF-Token": csrf})
+    bank_id = create.get_json()['id']
+    resp = client.delete(f"/api/banks/{bank_id}", headers={"X-CSRF-Token": csrf})
+    assert resp.status_code == 200

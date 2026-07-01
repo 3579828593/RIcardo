@@ -551,6 +551,159 @@ def api_logout():
     return jsonify({"ok": True})
 
 
+from permissions import can_read_bank, can_write_bank, can_import_to_bank, Bank, User
+
+MAX_BANKS_PER_USER = 20
+MAX_IMPORT_PER_DAY = 10
+MAX_QUESTIONS_PER_IMPORT = 500
+MAX_STEM_LENGTH = 2000
+MAX_OPTION_LENGTH = 500
+
+
+@app.route("/api/banks", methods=["GET", "POST"])
+def api_banks():
+    user = _get_current_user()
+    if request.method == "GET":
+        scope = request.args.get("scope", "official")
+        if scope == "mine":
+            if not user:
+                return jsonify({"error": "未登录"}), 401
+            banks = db.list_banks(owner_id=user['id'], scope="mine")
+        elif scope == "official":
+            banks = db.list_banks(scope="official")
+        elif scope == "public":
+            banks = db.list_banks(scope="public")
+        elif scope == "subscribed":
+            if not user:
+                return jsonify({"error": "未登录"}), 401
+            banks = db.list_banks(scope="subscribed", user_id=user['id'])
+        else:
+            banks = db.list_banks()
+        return jsonify({"banks": banks})
+
+    if not user:
+        return jsonify({"error": "未登录"}), 401
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    course = (data.get("course") or "").strip()
+    description = (data.get("description") or "").strip()
+    visibility = data.get("visibility", "private")
+
+    if not name or len(name) > 50:
+        return jsonify({"error": "题库名称不能为空且不超过 50 字符"}), 400
+    if not course:
+        return jsonify({"error": "课程不能为空"}), 400
+    if visibility not in ('private', 'public', 'unlisted'):
+        return jsonify({"error": "无效的可见性"}), 400
+
+    if db.count_user_banks(user['id']) >= MAX_BANKS_PER_USER:
+        return jsonify({"error": f"每人最多创建 {MAX_BANKS_PER_USER} 个题库"}), 400
+
+    bank_id = db.create_bank(owner_id=user['id'], name=name, course=course,
+                             description=description, visibility=visibility)
+    bank = db.get_bank(bank_id)
+    return jsonify(bank), 201
+
+
+@app.route("/api/banks/<int:bank_id>", methods=["GET", "PUT", "DELETE"])
+def api_bank_detail(bank_id):
+    bank_data = db.get_bank(bank_id)
+    if not bank_data:
+        return jsonify({"error": "题库不存在"}), 404
+
+    user = _get_current_user()
+    bank = Bank(bank_data)
+    user_obj = User(user) if user else None
+
+    if request.method == "GET":
+        if not can_read_bank(user_obj, bank):
+            return jsonify({"error": "无权访问"}), 403
+        return jsonify(bank_data)
+
+    if request.method == "PUT":
+        if not can_write_bank(user_obj, bank):
+            return jsonify({"error": "无权编辑"}), 403
+        data = request.get_json(silent=True) or {}
+        db.update_bank(bank_id, data)
+        return jsonify(db.get_bank(bank_id))
+
+    if request.method == "DELETE":
+        if not can_write_bank(user_obj, bank):
+            return jsonify({"error": "无权删除"}), 403
+        db.delete_bank(bank_id)
+        return jsonify({"ok": True})
+
+
+@app.route("/api/banks/<int:bank_id>/questions", methods=["GET"])
+def api_bank_questions(bank_id):
+    bank_data = db.get_bank(bank_id)
+    if not bank_data:
+        return jsonify({"error": "题库不存在"}), 404
+    user = _get_current_user()
+    bank = Bank(bank_data)
+    user_obj = User(user) if user else None
+    if not can_read_bank(user_obj, bank):
+        return jsonify({"error": "无权访问"}), 403
+
+    page, error, status = _positive_int_arg("page", 1)
+    if error:
+        return error, status
+    page_size, error, status = _positive_int_arg("page_size", cfg["quiz"]["default_page_size"], cfg["quiz"]["max_page_size"])
+    if error:
+        return error, status
+    result = db.search_questions(page=page, page_size=page_size, bank_id=bank_id)
+    return jsonify(result)
+
+
+@app.route("/api/banks/<int:bank_id>/progress", methods=["GET"])
+def api_bank_progress(bank_id):
+    bank_data = db.get_bank(bank_id)
+    if not bank_data:
+        return jsonify({"error": "题库不存在"}), 404
+    user = _get_current_user()
+    bank = Bank(bank_data)
+    user_obj = User(user) if user else None
+    if not can_read_bank(user_obj, bank):
+        return jsonify({"error": "无权访问"}), 403
+
+    with db.connection() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM questions WHERE bank_id = ?", (bank_id,)).fetchone()[0]
+        if user:
+            done_ids = [r[0] for r in conn.execute(
+                "SELECT DISTINCT question_id FROM answer_records WHERE user_id = ? AND bank_id = ?",
+                (user['id'], bank_id)
+            ).fetchall()]
+            correct = conn.execute(
+                "SELECT COUNT(*) FROM answer_records WHERE correct = 1 AND user_id = ? AND bank_id = ?",
+                (user['id'], bank_id)
+            ).fetchone()[0]
+            total_answers = conn.execute(
+                "SELECT COUNT(*) FROM answer_records WHERE user_id = ? AND bank_id = ?",
+                (user['id'], bank_id)
+            ).fetchone()[0]
+        else:
+            sid = _get_session_id()
+            done_ids = [r[0] for r in conn.execute(
+                "SELECT DISTINCT question_id FROM answer_records WHERE session_id = ? AND bank_id = ?",
+                (sid, bank_id)
+            ).fetchall()]
+            correct = conn.execute(
+                "SELECT COUNT(*) FROM answer_records WHERE correct = 1 AND session_id = ? AND bank_id = ?",
+                (sid, bank_id)
+            ).fetchone()[0]
+            total_answers = conn.execute(
+                "SELECT COUNT(*) FROM answer_records WHERE session_id = ? AND bank_id = ?",
+                (sid, bank_id)
+            ).fetchone()[0]
+
+    return jsonify({
+        "done_question_ids": done_ids,
+        "total": total,
+        "done": len(done_ids),
+        "correct_rate": round(correct / total_answers, 4) if total_answers else 0,
+    })
+
+
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Not found"}), 404
