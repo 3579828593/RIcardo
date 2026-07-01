@@ -139,3 +139,66 @@ def test_get_user_by_id():
         assert user['student_id'] == '2024002'
         assert 'password_hash' not in user
         db.close()
+
+
+def test_answer_records_has_user_id_bank_id():
+    """answer_records 有 user_id 和 bank_id 列"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        with db.connection() as conn:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(answer_records)").fetchall()]
+        assert 'user_id' in cols
+        assert 'bank_id' in cols
+        db.close()
+
+
+def test_migrate_session_data_idempotent():
+    """迁移函数幂等：重复执行不报错"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        uid = db.create_user("migrate001", "hash", "迁移测试")
+        with db.connection() as conn:
+            conn.execute(
+                "INSERT INTO answer_records (question_id, user_answer, correct, session_id, bank_id) VALUES (1, 'A', 1, 'sess-abc', 1)"
+            )
+            conn.execute(
+                "INSERT INTO favorites (question_id, session_id, bank_id) VALUES (1, 'sess-abc', 1)"
+            )
+            conn.execute(
+                "INSERT INTO mistakes (question_id, session_id, bank_id) VALUES (1, 'sess-abc', 1)"
+            )
+        db.migrate_session_data(uid, "sess-abc")
+        with db.connection() as conn:
+            r = conn.execute("SELECT user_id FROM answer_records WHERE session_id = 'sess-abc'").fetchone()
+            assert r['user_id'] == uid
+        db.migrate_session_data(uid, "sess-abc")
+        db.close()
+
+
+def test_migrate_session_data_dedup():
+    """迁移时去重：已有同题记录不重复迁移"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        uid = db.create_user("dedup001", "hash", "去重测试")
+        with db.connection() as conn:
+            conn.execute(
+                "INSERT INTO answer_records (question_id, user_answer, correct, session_id, user_id, bank_id) VALUES (1, 'A', 1, 'old-sess', ?, 1)",
+                (uid,)
+            )
+            conn.execute(
+                "INSERT INTO answer_records (question_id, user_answer, correct, session_id, bank_id) VALUES (1, 'B', 0, 'new-sess', 1)"
+            )
+        db.migrate_session_data(uid, "new-sess")
+        with db.connection() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM answer_records WHERE session_id = 'new-sess' AND user_id = ?",
+                (uid,)
+            ).fetchone()[0]
+            assert count == 0
+        db.close()

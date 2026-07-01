@@ -161,6 +161,8 @@ class QuizDatabase:
             self._post_migrate(conn)
             # 第三步：迁移到 bank_id 架构
             self._migrate_to_banks(conn)
+            # 第四步：为 answer_records/mistakes/favorites 添加 user_id 和 bank_id 列
+            self._migrate_user_bank_columns(conn)
 
     def _pre_migrate(self, conn):
         """为旧版表添加 session_id 列（在 executescript 之前运行）"""
@@ -647,3 +649,60 @@ class QuizDatabase:
                 (user_id,)
             ).fetchone()
         return dict(row) if row else None
+
+    def _migrate_user_bank_columns(self, conn):
+        """为 answer_records/mistakes/favorites 添加 user_id 和 bank_id 列"""
+        for table in ('answer_records', 'mistakes', 'favorites'):
+            cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+            if 'user_id' not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER")
+            if 'bank_id' not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN bank_id INTEGER")
+        # 防重复唯一索引
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_fav_user_question
+            ON favorites(user_id, question_id) WHERE user_id IS NOT NULL
+        """)
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mistakes_user_question
+            ON mistakes(user_id, question_id) WHERE user_id IS NOT NULL
+        """)
+        # 复合索引
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_answer_records_user_bank ON answer_records(user_id, bank_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_mistakes_user_bank ON mistakes(user_id, bank_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_favorites_user_bank ON favorites(user_id, bank_id)")
+
+    def migrate_session_data(self, user_id: int, session_id: str):
+        """将匿名 session_id 数据迁移到 user_id。幂等可重复执行。"""
+        with self.connection() as conn:
+            # answer_records: 迁移不重复的记录
+            conn.execute("""
+                UPDATE answer_records SET user_id=?
+                WHERE session_id=? AND user_id IS NULL
+                AND question_id NOT IN (
+                    SELECT question_id FROM answer_records WHERE user_id=?
+                )
+            """, (user_id, session_id, user_id))
+
+            # favorites: 迁移不重复的收藏
+            conn.execute("""
+                UPDATE favorites SET user_id=?
+                WHERE session_id=? AND user_id IS NULL
+                AND question_id NOT IN (
+                    SELECT question_id FROM favorites WHERE user_id=?
+                )
+            """, (user_id, session_id, user_id))
+
+            # mistakes: 同理
+            conn.execute("""
+                UPDATE mistakes SET user_id=?
+                WHERE session_id=? AND user_id IS NULL
+                AND question_id NOT IN (
+                    SELECT question_id FROM mistakes WHERE user_id=?
+                )
+            """, (user_id, session_id, user_id))
+
+            # 清理重复的匿名数据（未能迁移的重复记录仍为匿名，删除之）
+            conn.execute("DELETE FROM answer_records WHERE session_id=? AND user_id IS NULL", (session_id,))
+            conn.execute("DELETE FROM favorites WHERE session_id=? AND user_id IS NULL", (session_id,))
+            conn.execute("DELETE FROM mistakes WHERE session_id=? AND user_id IS NULL", (session_id,))
