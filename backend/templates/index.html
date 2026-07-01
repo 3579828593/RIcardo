@@ -926,6 +926,7 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
           <div class="bank-group-title">我的题库 <button @click.stop="createBank" class="add-bank-btn">+ 新建</button></div>
           <div v-for="b in myBanks" :key="b.id" @click="selectBank(b.id)" class="bank-item" :class="{ active: currentBankId === b.id }">
             {{ b.name }} ({{ b.question_count }}题)
+            <button v-if="currentBankId === b.id" @click.stop="openImportModal" class="add-bank-btn" style="margin-left:8px;">导入CSV</button>
           </div>
         </div>
         <div v-if="currentUser && subscribedBanks.length" class="bank-group">
@@ -934,6 +935,29 @@ input, select, textarea { font-family: inherit; letter-spacing: inherit; }
             {{ b.name }} ({{ b.question_count }}题)
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- CSV 导入弹窗 -->
+    <div v-if="showImportModal" class="modal-overlay" @click.self="showImportModal = false">
+      <div class="modal-content">
+        <h3>导入 CSV 题目</h3>
+        <p style="font-size:12px;color:var(--muted-foreground);margin-bottom:12px;">
+          导入到：{{ myBanks.find(b => b.id === currentBankId)?.name || '当前题库' }}
+        </p>
+        <label class="form-btn" style="display:block;text-align:center;cursor:pointer;">
+          {{ importingBank ? '导入中...' : '选择 CSV 文件' }}
+          <input type="file" accept=".csv" @change="uploadCSV" style="display:none;" :disabled="importingBank">
+        </label>
+        <div v-if="bankImportResult" style="margin-top:12px;">
+          <div v-if="bankImportResult.success" style="padding:8px;background:var(--success-light);border:1px solid var(--success);font-size:13px;">
+            导入成功：{{ bankImportResult.imported }} 题，跳过 {{ bankImportResult.skipped }} 题
+          </div>
+          <div v-else style="padding:8px;background:var(--error-light);border:1px solid var(--error);font-size:13px;">
+            {{ bankImportResult.error || '导入失败' }}
+          </div>
+        </div>
+        <button @click="showImportModal = false" class="form-btn" style="margin-top:12px;background:var(--muted);">关闭</button>
       </div>
     </div>
 

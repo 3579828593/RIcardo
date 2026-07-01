@@ -104,6 +104,9 @@ createApp({
     const officialBanks = ref([]);
     const subscribedBanks = ref([]);
     const showBankSelector = ref(false);
+    const showImportModal = ref(false);
+    const importingBank = ref(false);
+    const bankImportResult = ref(null);
 
     // ========== localStorage 持久化 ==========
     const STORAGE_KEY = 'quiz_state_v1';
@@ -419,7 +422,15 @@ createApp({
     async function selectBank(bankId) {
       currentBankId.value = bankId;
       showBankSelector.value = false;
+      // 重置筛选条件（新题库的课程/章节可能不同）
+      selectedCourse.value = '';
+      selectedTypes.value = [];
+      filter.chapter = null;
+      filter.keyword = '';
       await loadAllForSingleMode();
+      // 重新加载课程列表和统计（按当前题库）
+      await loadCourseCounts();
+      await loadStats();
       if (currentUser.value) {
         try {
           const resp = await fetch(`/api/banks/${bankId}/progress`);
@@ -455,6 +466,42 @@ createApp({
         }
       }
     }
+
+    // ========== CSV 导入到题库 ==========
+    const openImportModal = () => {
+      showImportModal.value = true;
+      bankImportResult.value = null;
+    };
+
+    const uploadCSV = async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      importingBank.value = true;
+      bankImportResult.value = null;
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const resp = await authFetch(`/api/banks/${currentBankId.value}/import`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await resp.json();
+        if (resp.ok || resp.status === 201) {
+          bankImportResult.value = { success: true, ...data };
+          showToast(`导入成功：${data.imported} 题`, 'success');
+          await loadMyBanks();
+          await selectBank(currentBankId.value);
+        } else {
+          bankImportResult.value = { success: false, ...data };
+          showToast(data.error || '导入失败', 'error');
+        }
+      } catch(e) {
+        showToast('上传失败，请检查网络', 'error');
+      } finally {
+        importingBank.value = false;
+        event.target.value = '';
+      }
+    };
 
     // 带加载状态的 fetch 封装（R3: 额外标记当前 Tab 的加载态）
     const fetchWithLoading = async (url, options = {}) => {
@@ -714,7 +761,7 @@ createApp({
     // ========== 课程数量加载 ==========
     const loadCourseCounts = async () => {
       try {
-        const res = await apiFetch('/api/stats');
+        const res = await apiFetch('/api/stats?bank_id=' + currentBankId.value);
         const data = await res.json();
         if (data.course_distribution) {
           courseCounts.value = data.course_distribution;
@@ -888,7 +935,7 @@ createApp({
     // ========== 统计 ==========
     const loadStats = async () => {
       try {
-        const data = await fetchWithLoading('/api/stats');
+        const data = await fetchWithLoading('/api/stats?bank_id=' + currentBankId.value);
         stats.value = data;
         // 从服务端恢复 doneSet（合并本地+服务端，解决换设备进度丢失）
         syncDoneSetFromServer(data);
@@ -899,7 +946,7 @@ createApp({
 
     const loadStatsSilent = async () => {
       try {
-        const res = await apiFetch('/api/stats');
+        const res = await apiFetch('/api/stats?bank_id=' + currentBankId.value);
         const data = await res.json();
         stats.value = data;
         syncDoneSetFromServer(data);
@@ -1483,8 +1530,10 @@ createApp({
       // 认证 & 题库
       currentUser, csrfToken, showLoginModal, loginMode, loginForm, loginError,
       currentBankId, myBanks, officialBanks, subscribedBanks, showBankSelector,
+      showImportModal, importingBank, bankImportResult,
       authFetch, checkAuth, submitLogin, logout,
       loadMyBanks, loadOfficialBanks, loadSubscribedBanks, selectBank, createBank,
+      openImportModal, uploadCSV,
     };
   }
 }).mount('#app');

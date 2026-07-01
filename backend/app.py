@@ -300,7 +300,8 @@ def api_submit():
 def api_stats():
     user = _get_current_user()
     user_id = user['id'] if user else None
-    return jsonify(db.get_stats(session_id=_get_session_id(), user_id=user_id))
+    bank_id = request.args.get("bank_id", type=int)
+    return jsonify(db.get_stats(session_id=_get_session_id(), user_id=user_id, bank_id=bank_id))
 
 
 @app.route("/api/mistakes", methods=["GET"])

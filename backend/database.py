@@ -675,29 +675,54 @@ class QuizDatabase:
                         (question_id, session_id, bank_id),
                     )
 
-    def get_stats(self, session_id: str = 'anon', user_id: int = None) -> dict:
+    def get_stats(self, session_id: str = 'anon', user_id: int = None, bank_id: int = None) -> dict:
         with self.connection() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
-            if user_id:
-                answered = conn.execute("SELECT COUNT(DISTINCT question_id) FROM answer_records WHERE user_id = ?", (user_id,)).fetchone()[0]
-                correct = conn.execute("SELECT COUNT(*) FROM answer_records WHERE correct = 1 AND user_id = ?", (user_id,)).fetchone()[0]
-                total_answers = conn.execute("SELECT COUNT(*) FROM answer_records WHERE user_id = ?", (user_id,)).fetchone()[0]
-                mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes WHERE user_id = ?", (user_id,)).fetchone()[0]
-                fav_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE user_id = ?", (user_id,)).fetchone()[0]
-                answered_ids = [r[0] for r in conn.execute(
-                    "SELECT DISTINCT question_id FROM answer_records WHERE user_id = ?", (user_id,)
-                ).fetchall()]
+            if bank_id:
+                total = conn.execute("SELECT COUNT(*) FROM questions WHERE bank_id = ?", (bank_id,)).fetchone()[0]
+                if user_id:
+                    answered = conn.execute("SELECT COUNT(DISTINCT ar.question_id) FROM answer_records ar JOIN questions q ON ar.question_id = q.id WHERE ar.user_id = ? AND q.bank_id = ?", (user_id, bank_id)).fetchone()[0]
+                    correct = conn.execute("SELECT COUNT(*) FROM answer_records ar JOIN questions q ON ar.question_id = q.id WHERE ar.correct = 1 AND ar.user_id = ? AND q.bank_id = ?", (user_id, bank_id)).fetchone()[0]
+                    total_answers = conn.execute("SELECT COUNT(*) FROM answer_records ar JOIN questions q ON ar.question_id = q.id WHERE ar.user_id = ? AND q.bank_id = ?", (user_id, bank_id)).fetchone()[0]
+                    mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes m JOIN questions q ON m.question_id = q.id WHERE m.user_id = ? AND q.bank_id = ?", (user_id, bank_id)).fetchone()[0]
+                    fav_count = conn.execute("SELECT COUNT(*) FROM favorites f JOIN questions q ON f.question_id = q.id WHERE f.user_id = ? AND q.bank_id = ?", (user_id, bank_id)).fetchone()[0]
+                    answered_ids = [r[0] for r in conn.execute(
+                        "SELECT DISTINCT ar.question_id FROM answer_records ar JOIN questions q ON ar.question_id = q.id WHERE ar.user_id = ? AND q.bank_id = ?",
+                        (user_id, bank_id)
+                    ).fetchall()]
+                else:
+                    answered = conn.execute("SELECT COUNT(DISTINCT ar.question_id) FROM answer_records ar JOIN questions q ON ar.question_id = q.id WHERE ar.session_id = ? AND q.bank_id = ?", (session_id, bank_id)).fetchone()[0]
+                    correct = conn.execute("SELECT COUNT(*) FROM answer_records ar JOIN questions q ON ar.question_id = q.id WHERE ar.correct = 1 AND ar.session_id = ? AND q.bank_id = ?", (session_id, bank_id)).fetchone()[0]
+                    total_answers = conn.execute("SELECT COUNT(*) FROM answer_records ar JOIN questions q ON ar.question_id = q.id WHERE ar.session_id = ? AND q.bank_id = ?", (session_id, bank_id)).fetchone()[0]
+                    mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes m JOIN questions q ON m.question_id = q.id WHERE m.session_id = ? AND q.bank_id = ?", (session_id, bank_id)).fetchone()[0]
+                    fav_count = conn.execute("SELECT COUNT(*) FROM favorites f JOIN questions q ON f.question_id = q.id WHERE f.session_id = ? AND q.bank_id = ?", (session_id, bank_id)).fetchone()[0]
+                    answered_ids = [r[0] for r in conn.execute(
+                        "SELECT DISTINCT ar.question_id FROM answer_records ar JOIN questions q ON ar.question_id = q.id WHERE ar.session_id = ? AND q.bank_id = ?",
+                        (session_id, bank_id)
+                    ).fetchall()]
+                type_dist = conn.execute("SELECT type, COUNT(*) FROM questions WHERE bank_id = ? GROUP BY type", (bank_id,)).fetchall()
+                course_dist = conn.execute("SELECT course, COUNT(*) FROM questions WHERE bank_id = ? GROUP BY course", (bank_id,)).fetchall()
             else:
-                answered = conn.execute("SELECT COUNT(DISTINCT question_id) FROM answer_records WHERE session_id = ?", (session_id,)).fetchone()[0]
-                correct = conn.execute("SELECT COUNT(*) FROM answer_records WHERE correct = 1 AND session_id = ?", (session_id,)).fetchone()[0]
-                total_answers = conn.execute("SELECT COUNT(*) FROM answer_records WHERE session_id = ?", (session_id,)).fetchone()[0]
-                mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes WHERE session_id = ?", (session_id,)).fetchone()[0]
-                fav_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE session_id = ?", (session_id,)).fetchone()[0]
-                answered_ids = [r[0] for r in conn.execute(
-                    "SELECT DISTINCT question_id FROM answer_records WHERE session_id = ?", (session_id,)
-                ).fetchall()]
-            type_dist = conn.execute("SELECT type, COUNT(*) FROM questions GROUP BY type").fetchall()
-            course_dist = conn.execute("SELECT course, COUNT(*) FROM questions GROUP BY course").fetchall()
+                total = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+                if user_id:
+                    answered = conn.execute("SELECT COUNT(DISTINCT question_id) FROM answer_records WHERE user_id = ?", (user_id,)).fetchone()[0]
+                    correct = conn.execute("SELECT COUNT(*) FROM answer_records WHERE correct = 1 AND user_id = ?", (user_id,)).fetchone()[0]
+                    total_answers = conn.execute("SELECT COUNT(*) FROM answer_records WHERE user_id = ?", (user_id,)).fetchone()[0]
+                    mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes WHERE user_id = ?", (user_id,)).fetchone()[0]
+                    fav_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE user_id = ?", (user_id,)).fetchone()[0]
+                    answered_ids = [r[0] for r in conn.execute(
+                        "SELECT DISTINCT question_id FROM answer_records WHERE user_id = ?", (user_id,)
+                    ).fetchall()]
+                else:
+                    answered = conn.execute("SELECT COUNT(DISTINCT question_id) FROM answer_records WHERE session_id = ?", (session_id,)).fetchone()[0]
+                    correct = conn.execute("SELECT COUNT(*) FROM answer_records WHERE correct = 1 AND session_id = ?", (session_id,)).fetchone()[0]
+                    total_answers = conn.execute("SELECT COUNT(*) FROM answer_records WHERE session_id = ?", (session_id,)).fetchone()[0]
+                    mistake_count = conn.execute("SELECT COUNT(*) FROM mistakes WHERE session_id = ?", (session_id,)).fetchone()[0]
+                    fav_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE session_id = ?", (session_id,)).fetchone()[0]
+                    answered_ids = [r[0] for r in conn.execute(
+                        "SELECT DISTINCT question_id FROM answer_records WHERE session_id = ?", (session_id,)
+                    ).fetchall()]
+                type_dist = conn.execute("SELECT type, COUNT(*) FROM questions GROUP BY type").fetchall()
+                course_dist = conn.execute("SELECT course, COUNT(*) FROM questions GROUP BY course").fetchall()
         return {
             "total_questions": total,
             "answered_questions": answered,
