@@ -313,3 +313,70 @@ def test_api_import_to_other_user_bank():
                        content_type="multipart/form-data",
                        headers={"X-CSRF-Token": csrf_b})
     assert resp.status_code == 403
+
+
+def test_report_question():
+    """POST /api/questions/<id>/report 举报题目"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    qid = db.add_question({"course": "test", "chapter": 1, "type": "single",
+                           "stem": "report_test_q", "options": {}, "answer": ["A"]})
+    resp = client.post(f"/api/questions/{qid}/report", json={
+        "reason": "内容不当", "detail": "有错别字"
+    })
+    assert resp.status_code == 201
+
+
+def test_report_question_logged_in():
+    """登录用户举报"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    reg = client.post("/api/auth/register", json={
+        "student_id": "reporter001", "password": "test123456", "nickname": "举报者"
+    })
+    csrf = reg.get_json()['csrf_token']
+    qid = db.add_question({"course": "test", "chapter": 1, "type": "single",
+                           "stem": "report_login_test", "options": {}, "answer": ["A"]})
+    resp = client.post(f"/api/questions/{qid}/report", json={
+        "reason": "错误答案"
+    }, headers={"X-CSRF-Token": csrf})
+    assert resp.status_code == 201
+
+
+def test_admin_list_reports():
+    """GET /api/admin/reports 管理员查看举报列表"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    qid = db.add_question({"course": "test", "chapter": 1, "type": "single",
+                           "stem": "admin_report_test", "options": {}, "answer": ["A"]})
+    client.post(f"/api/questions/{qid}/report", json={"reason": "测试"})
+    resp = client.get("/api/admin/reports", headers={"X-Admin-Token": "test-admin-token"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data['reports']) >= 1
+
+
+def test_admin_handle_report():
+    """PUT /api/admin/reports/<id> 处理举报"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    qid = db.add_question({"course": "test", "chapter": 1, "type": "single",
+                           "stem": "handle_report_test", "options": {}, "answer": ["A"]})
+    client.post(f"/api/questions/{qid}/report", json={"reason": "测试"})
+    # 获取 report id
+    reports = client.get("/api/admin/reports", headers={"X-Admin-Token": "test-admin-token"}).get_json()['reports']
+    report_id = reports[-1]['id']
+    # 处理
+    resp = client.put(f"/api/admin/reports/{report_id}",
+                      json={"status": "resolved", "admin_note": "已处理"},
+                      headers={"X-Admin-Token": "test-admin-token"})
+    assert resp.status_code == 200
+    assert resp.get_json()['status'] == 'resolved'

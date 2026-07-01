@@ -156,6 +156,24 @@ class QuizDatabase:
                     window_start TEXT NOT NULL,
                     PRIMARY KEY (key, window_start)
                 );
+
+                CREATE TABLE IF NOT EXISTS reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    reporter_id INTEGER,
+                    session_id TEXT,
+                    question_id INTEGER NOT NULL,
+                    reason TEXT NOT NULL,
+                    detail TEXT DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'resolved', 'dismissed')),
+                    handled_by INTEGER,
+                    handled_at TEXT,
+                    admin_note TEXT DEFAULT '',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_user_question
+                ON reports(reporter_id, question_id) WHERE reporter_id IS NOT NULL;
+                CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
             """)
             # 第二步：后迁移 - 重建旧表以更新 UNIQUE 约束
             self._post_migrate(conn)
@@ -383,6 +401,44 @@ class QuizDatabase:
                 "SELECT COUNT(*) FROM question_banks WHERE owner_id = ? AND status != 'deleted'",
                 (owner_id,)
             ).fetchone()[0]
+
+    def create_report(self, question_id: int, reason: str, detail: str = '',
+                      reporter_id: int = None, session_id: str = None) -> int:
+        """创建举报。已登录用户重复举报返回 None。"""
+        try:
+            with self.connection() as conn:
+                cur = conn.execute(
+                    """INSERT INTO reports (reporter_id, session_id, question_id, reason, detail)
+                    VALUES (?, ?, ?, ?, ?)""",
+                    (reporter_id, session_id, question_id, reason, detail)
+                )
+                return cur.lastrowid
+        except sqlite3.IntegrityError:
+            return None  # 重复举报
+
+    def list_reports(self, status: str = None) -> list:
+        """列出举报"""
+        with self.connection() as conn:
+            if status:
+                rows = conn.execute(
+                    "SELECT * FROM reports WHERE status = ? ORDER BY created_at DESC", (status,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM reports ORDER BY created_at DESC"
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def handle_report(self, report_id: int, status: str, admin_note: str = '',
+                      handler_id: int = None) -> bool:
+        """处理举报"""
+        with self.connection() as conn:
+            cur = conn.execute(
+                """UPDATE reports SET status = ?, admin_note = ?, handled_by = ?, handled_at = CURRENT_TIMESTAMP
+                WHERE id = ?""",
+                (status, admin_note, handler_id, report_id)
+            )
+            return cur.rowcount > 0
 
     def backup(self):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")

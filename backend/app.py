@@ -789,6 +789,60 @@ def api_bank_import(bank_id):
         }), 500
 
 
+@app.route("/api/questions/<int:qid>/report", methods=["POST"])
+def api_report_question(qid):
+    """举报题目（登录或匿名）"""
+    q = db.get_question(qid)
+    if not q:
+        return jsonify({"error": "题目不存在"}), 404
+
+    data = request.get_json(silent=True) or {}
+    reason = (data.get("reason") or "").strip()
+    detail = (data.get("detail") or "").strip()
+    if not reason:
+        return jsonify({"error": "举报原因不能为空"}), 400
+
+    user = _get_current_user()
+    reporter_id = user['id'] if user else None
+    session_id = _get_session_id() if not user else None
+
+    # 限流
+    ip = request.remote_addr or "unknown"
+    rate_key = f"report:ip:{ip}" if not user else f"report:user:{user['id']}"
+    if not check_rate_limit(db, rate_key, 5, 60):
+        return jsonify({"error": "举报过于频繁，请稍后再试"}), 429
+
+    report_id = db.create_report(qid, reason, detail, reporter_id, session_id)
+    if report_id is None:
+        return jsonify({"error": "你已经举报过这道题"}), 409
+
+    return jsonify({"id": report_id, "ok": True}), 201
+
+
+@app.route("/api/admin/reports", methods=["GET"])
+@require_admin
+def api_admin_reports():
+    """管理员查看举报列表"""
+    status = request.args.get("status")
+    reports = db.list_reports(status)
+    return jsonify({"reports": reports})
+
+
+@app.route("/api/admin/reports/<int:report_id>", methods=["PUT"])
+@require_admin
+def api_admin_handle_report(report_id):
+    """管理员处理举报"""
+    data = request.get_json(silent=True) or {}
+    status = data.get("status")
+    admin_note = data.get("admin_note", "")
+    if status not in ('resolved', 'dismissed'):
+        return jsonify({"error": "无效状态"}), 400
+    ok = db.handle_report(report_id, status, admin_note)
+    if not ok:
+        return jsonify({"error": "举报不存在"}), 404
+    return jsonify({"ok": True, "status": status})
+
+
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Not found"}), 404
