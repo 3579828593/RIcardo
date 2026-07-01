@@ -195,13 +195,14 @@ def api_questions():
     qtype = request.args.get("type")
     keyword = request.args.get("keyword")
     knowledge = request.args.get("knowledge")
+    bank_id = request.args.get("bank_id", type=int)
     page, error, status = _positive_int_arg("page", 1)
     if error:
         return error, status
     page_size, error, status = _positive_int_arg("page_size", cfg["quiz"]["default_page_size"], cfg["quiz"]["max_page_size"])
     if error:
         return error, status
-    result = db.search_questions(course, chapter, qtype, keyword, knowledge, page, page_size)
+    result = db.search_questions(course, chapter, qtype, keyword, knowledge, page, page_size, bank_id=bank_id)
     return jsonify(result)
 
 
@@ -210,10 +211,11 @@ def api_random():
     course = request.args.get("course")
     chapter = request.args.get("chapter", type=int)
     qtype = request.args.get("type")
+    bank_id = request.args.get("bank_id", type=int)
     limit, error, status = _positive_int_arg("limit", 20, 100)
     if error:
         return error, status
-    items = db.get_random_questions(course, chapter, qtype, limit)
+    items = db.get_random_questions(course, chapter, qtype, limit, bank_id=bank_id)
     return jsonify({"items": items})
 
 

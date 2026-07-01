@@ -203,3 +203,33 @@ def test_search_questions_by_bank():
         r3 = db.search_questions()
         assert r3['total'] == 5
         db.close()
+
+
+def test_api_questions_filter_by_bank():
+    """GET /api/questions?bank_id=1 只返回官方题库题目"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app, db
+    client = app.test_client()
+    # 确保有官方题库题目
+    db.add_question({"course": "weather", "chapter": 1, "type": "single",
+                     "stem": "API测试题_bank1_unique", "options": {"A": "a"}, "answer": ["A"]}, bank_id=1)
+    resp = client.get("/api/questions?bank_id=1&page_size=100")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['total'] > 0
+    for item in data['items']:
+        assert item.get('bank_id', 1) == 1
+
+
+def test_api_questions_no_bank_id_backward_compat():
+    """GET /api/questions 不传 bank_id 时正常返回（向后兼容）"""
+    import os
+    os.environ.setdefault("QUIZ_ADMIN_TOKEN", "test-admin-token")
+    from app import app
+    client = app.test_client()
+    resp = client.get("/api/questions?page_size=5")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert 'items' in data
+    assert 'total' in data
