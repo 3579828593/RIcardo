@@ -285,14 +285,15 @@ class QuizDatabase:
         shutil.copy2(self.db_path, dst)
         return dst
 
-    def add_question(self, q: dict) -> int:
+    def add_question(self, q: dict, bank_id: int = 1) -> int:
         with self.connection() as conn:
             cur = conn.execute(
                 """INSERT OR IGNORE INTO questions
-                (original_id, course, chapter, type, stem, options_json, answer_json, explanation, knowledge)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (original_id, bank_id, course, chapter, type, stem, options_json, answer_json, explanation, knowledge)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     q.get("id"),
+                    bank_id,
                     q.get("course"),
                     q.get("chapter"),
                     q.get("type"),
@@ -305,11 +306,12 @@ class QuizDatabase:
             )
             return cur.lastrowid
 
-    def batch_add_questions(self, questions: list) -> dict:
-        """批量添加题目，利用 UNIQUE(course, stem) 自动去重。
+    def batch_add_questions(self, questions: list, bank_id: int = 1) -> dict:
+        """批量添加题目，利用 UNIQUE(bank_id, stem) 自动去重。
 
         Args:
             questions: 题目字典列表
+            bank_id: 所属题库 ID，默认为 1（官方题库）
 
         Returns:
             {added: int, skipped: int}
@@ -320,10 +322,11 @@ class QuizDatabase:
             for q in questions:
                 cur = conn.execute(
                     """INSERT OR IGNORE INTO questions
-                    (original_id, course, chapter, type, stem, options_json, answer_json, explanation, knowledge)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (original_id, bank_id, course, chapter, type, stem, options_json, answer_json, explanation, knowledge)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         q.get("id"),
+                        bank_id,
                         q.get("course"),
                         q.get("chapter"),
                         q.get("type"),
@@ -349,9 +352,13 @@ class QuizDatabase:
         knowledge: str = None,
         page: int = 1,
         page_size: int = 20,
+        bank_id: int = None,
     ) -> dict:
         where = ["1=1"]
         params = []
+        if bank_id is not None:
+            where.append("bank_id = ?")
+            params.append(bank_id)
         if course:
             where.append("course = ?")
             params.append(course)
@@ -420,9 +427,12 @@ class QuizDatabase:
                     result[r[0]] = chapters
                 return result
 
-    def get_random_questions(self, course: str = None, chapter: int = None, qtype: str = None, limit: int = 20) -> list:
+    def get_random_questions(self, course: str = None, chapter: int = None, qtype: str = None, limit: int = 20, bank_id: int = None) -> list:
         where = ["1=1"]
         params = []
+        if bank_id is not None:
+            where.append("bank_id = ?")
+            params.append(bank_id)
         if course:
             where.append("course = ?")
             params.append(course)

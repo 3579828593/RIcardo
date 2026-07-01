@@ -112,3 +112,94 @@ def test_question_count_dynamic():
         assert row['question_count'] == 3, f"question_count 应为 3，实际: {row['question_count']}"
         db.close()
         db2.close()
+
+
+def test_add_question_with_bank_id():
+    """add_question 支持 bank_id 参数"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        # 先创建一个用户题库（需要 users 表，Step 0 暂用 INSERT 直接插入）
+        with db.connection() as conn:
+            conn.execute("""CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                nickname TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'student',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )""")
+            conn.execute("INSERT INTO users (student_id, password_hash, nickname) VALUES ('test001', 'hash', 'Test')")
+            conn.execute("INSERT INTO question_banks (owner_id, name, course, visibility) VALUES (1, '我的题库', 'test', 'private')")
+        qid = db.add_question({"course": "test", "chapter": 1, "type": "single",
+                               "stem": "bank_id测试题", "options": {"A": "a"}, "answer": ["A"]},
+                              bank_id=2)
+        assert qid is not None
+        q = db.get_question(qid)
+        assert q['bank_id'] == 2
+        db.close()
+
+
+def test_batch_add_with_bank_id():
+    """batch_add_questions 支持 bank_id 参数"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        with db.connection() as conn:
+            conn.execute("""CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                nickname TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'student',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )""")
+            conn.execute("INSERT INTO users (student_id, password_hash, nickname) VALUES ('test002', 'hash', 'Test2')")
+            conn.execute("INSERT INTO question_banks (owner_id, name, course, visibility) VALUES (1, '批量题库', 'test', 'private')")
+        questions = [
+            {"course": "test", "chapter": 1, "type": "single", "stem": f"批量题{i}",
+             "options": {"A": "a"}, "answer": ["A"]}
+            for i in range(5)
+        ]
+        result = db.batch_add_questions(questions, bank_id=2)
+        assert result['added'] == 5
+        assert result['skipped'] == 0
+        db.close()
+
+
+def test_search_questions_by_bank():
+    """search_questions 支持 bank_id 过滤"""
+    from database import QuizDatabase
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db = QuizDatabase(os.path.join(tmpdir, "test.db"))
+        with db.connection() as conn:
+            conn.execute("""CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                nickname TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'student',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )""")
+            conn.execute("INSERT INTO users (student_id, password_hash, nickname) VALUES ('test003', 'hash', 'Test3')")
+            conn.execute("INSERT INTO question_banks (owner_id, name, course, visibility) VALUES (1, '搜索题库', 'test', 'private')")
+        # 官方题库加 2 题
+        db.add_question({"course": "test", "chapter": 1, "type": "single", "stem": "官方1", "options": {}, "answer": ["A"]})
+        db.add_question({"course": "test", "chapter": 1, "type": "single", "stem": "官方2", "options": {}, "answer": ["A"]})
+        # 用户题库加 3 题
+        db.add_question({"course": "test", "chapter": 1, "type": "single", "stem": "用户1", "options": {}, "answer": ["A"]}, bank_id=2)
+        db.add_question({"course": "test", "chapter": 1, "type": "single", "stem": "用户2", "options": {}, "answer": ["A"]}, bank_id=2)
+        db.add_question({"course": "test", "chapter": 1, "type": "single", "stem": "用户3", "options": {}, "answer": ["A"]}, bank_id=2)
+        # 查官方题库
+        r1 = db.search_questions(bank_id=1)
+        assert r1['total'] == 2
+        # 查用户题库
+        r2 = db.search_questions(bank_id=2)
+        assert r2['total'] == 3
+        # 不传 bank_id 默认查全部（向后兼容）
+        r3 = db.search_questions()
+        assert r3['total'] == 5
+        db.close()
