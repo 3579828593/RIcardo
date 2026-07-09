@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>期末冲刺刷题系统 — 完整项目文档集</title>
+<style>
+:root {
+  --bg: #0f1117; --card: #1a1d29; --border: #2d3142;
+  --text: #e4e6ed; --muted: #8b8fa3; --accent: #6c8cff;
+  --green: #4ade80; --yellow: #fbbf24; --red: #f87171;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--text); line-height:1.8; padding:20px; max-width:1200px; margin:0 auto; }
+h1 { font-size:30px; margin-bottom:8px; }
+h2 { font-size:24px; margin:40px 0 16px; padding:12px 0; border-bottom:3px solid var(--accent); color:var(--accent); }
+h3 { font-size:18px; margin:24px 0 12px; }
+h4 { font-size:15px; margin:16px 0 8px; color:var(--muted); }
+.subtitle { color:var(--muted); font-size:14px; margin-bottom:32px; }
+.doc-section { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:28px; margin-bottom:24px; }
+.doc-meta { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:12px 16px; background:rgba(108,140,255,0.08); border-radius:8px; font-size:13px; }
+.doc-meta span { color:var(--muted); }
+.doc-meta b { color:var(--text); }
+pre { background:#0d0e14; border:1px solid var(--border); border-radius:8px; padding:16px; overflow-x:auto; font-size:13px; line-height:1.6; margin:12px 0; }
+code { font-family: Consolas, "Courier New", monospace; }
+pre code { color: #a5b3d4; }
+table { width:100%; border-collapse:collapse; margin:12px 0; font-size:13px; }
+th { text-align:left; padding:10px 12px; background:var(--border); color:var(--muted); font-weight:600; }
+td { padding:10px 12px; border-bottom:1px solid var(--border); }
+.badge { display:inline-block; padding:3px 10px; border-radius:4px; font-size:12px; font-weight:bold; }
+.b-green { background:rgba(74,222,128,0.15); color:var(--green); }
+.b-yellow { background:rgba(251,191,36,0.15); color:var(--yellow); }
+.b-red { background:rgba(248,113,113,0.15); color:var(--red); }
+.b-blue { background:rgba(96,165,250,0.15); color:#60a5fa; }
+ul, ol { padding-left:24px; margin:8px 0; }
+li { padding:4px 0; font-size:14px; }
+p { margin:8px 0; font-size:14px; }
+.toc { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:32px; }
+.toc h3 { color:var(--accent); margin-top:0; }
+.toc ol { counter-reset:toc; list-style:none; padding-left:0; }
+.toc ol li { counter-increment:toc; padding:6px 0 6px 40px; position:relative; }
+.toc ol li::before { content:counter(toc); position:absolute; left:0; top:6px; width:28px; height:24px; background:var(--accent); color:var(--bg); border-radius:4px; text-align:center; line-height:24px; font-size:12px; font-weight:bold; }
+blockquote { border-left:3px solid var(--accent); padding:8px 16px; margin:12px 0; background:rgba(108,140,255,0.05); border-radius:0 8px 8px 0; }
+hr { border:none; border-top:1px solid var(--border); margin:24px 0; }
+.footer { text-align:center; color:var(--muted); font-size:13px; margin-top:40px; padding:20px 0; border-top:1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<h1>期末冲刺刷题系统 — 完整项目文档集</h1>
+<p class="subtitle">汇编日期：2026-07-02 · 用途：供其他 AI 完整分析评估 · 包含 10 份核心文档原文</p>
+
+<div class="toc">
+<h3>文档目录</h3>
+<ol>
+<li>项目概述与技术栈</li>
+<li>产品路线图 (roadmap-2026-summer.md)</li>
+<li>项目宪法 (CONSTITUTION.md)</li>
+<li>SDD 工作流设计 (workflow-design.md)</li>
+<li>UGC 题库系统设计文档 (v2)</li>
+<li>架构决策记录 (ADR, 6 条)</li>
+<li>AI 代理入职文件 (AGENTS.md)</li>
+<li>代码审查报告 (1 Critical + 4 Important + 5 Minor)</li>
+<li>进度快照 (progress.yaml) 与任务清单 (tasks.md)</li>
+<li>配置文件与依赖</li>
+</ol>
+</div>
+
+<!-- ==================== 1. 项目概述 ==================== -->
+<h2>01. 项目概述与技术栈</h2>
+<div class="doc-section">
+<div class="doc-meta">
+<span><b>项目名称：</b>期末冲刺刷题系统</span>
+<span><b>线上地址：</b>https://3579828593.pythonanywhere.com</span>
+<span><b>GitHub：</b>https://github.com/3579828593/RIcardo.git</span>
+<span><b>题目数量：</b>351（天气分析 268 + 大学英语 83）</span>
+</div>
+
+<h3>技术栈</h3>
+<table>
+<tr><th>层级</th><th>技术</th><th>版本</th><th>约束</th></tr>
+<tr><td>后端</td><td>Python + Flask</td><td>3.10 / 3.0.3</td><td>禁止使用 ORM</td></tr>
+<tr><td>数据库</td><td>SQLite</td><td>内置</td><td>WAL 模式，单文件</td></tr>
+<tr><td>前端</td><td>Vue 3 (CDN)</td><td>3.x prod</td><td>无构建步骤，单 app.js 文件</td></tr>
+<tr><td>PWA</td><td>Service Worker</td><td>StaleWhileRevalidate</td><td>每次前端变更须升级版本号</td></tr>
+<tr><td>部署</td><td>PythonAnywhere 免费层</td><td>—</td><td>100 CPU 秒/天，3 个月续期</td></tr>
+<tr><td>测试</td><td>pytest</td><td>—</td><td>151 项测试（含 E2E）</td></tr>
+<tr><td>依赖</td><td>flask, werkzeug, gunicorn, pyyaml</td><td>4 个包</td><td>极简依赖</td></tr>
+</table>
+
+<h3>核心功能</h3>
+<ul>
+<li>5 种题型：单选、多选、判断、填空、简答</li>
+<li>双模式刷题：单题流（cursor + doneSet）/ 列表浏览</li>
+<li>UGC 题库：用户注册/登录、创建私有题库、CSV 批量导入、公开题库订阅</li>
+<li>权限模型：官方/公开/私有题库，owner/admin/student 三级权限</li>
+<li>安全：pbkdf2_sha256 密码哈希、CSRF 防护、限流、参数化查询、安全响应头</li>
+<li>离线支持：Service Worker 离线答题、localStorage 队列暂存</li>
+<li>辅助功能：错题本、收藏夹、Anki 间隔复习、键盘快捷键、连击系统</li>
+<li>多端部署：PythonAnywhere / Render / Docker / 桌面 exe</li>
+</ul>
+
+<h3>数据库表结构（11 张表）</h3>
+<table>
+<tr><th>表名</th><th>用途</th><th>关键字段</th></tr>
+<tr><td>questions</td><td>题目</td><td>bank_id, course, chapter, type, stem, options_json, answer_json, flagged</td></tr>
+<tr><td>question_banks</td><td>题库(UGC)</td><td>owner_id(NULL=官方), name, visibility(private/public/unlisted), status, question_count</td></tr>
+<tr><td>users</td><td>用户</td><td>student_id(UNIQUE), password_hash(pbkdf2_sha256), nickname, role(student/admin)</td></tr>
+<tr><td>answer_records</td><td>答题记录</td><td>question_id, user_answer, correct, session_id, user_id, bank_id</td></tr>
+<tr><td>mistakes</td><td>错题本</td><td>question_id, wrong_count, session_id, user_id, bank_id</td></tr>
+<tr><td>favorites</td><td>收藏夹</td><td>question_id, tag, session_id, user_id, bank_id</td></tr>
+<tr><td>bank_subscriptions</td><td>题库订阅</td><td>user_id, bank_id, PK(user_id, bank_id)</td></tr>
+<tr><td>reports</td><td>举报</td><td>reporter_id, question_id, reason, status(pending/resolved/dismissed)</td></tr>
+<tr><td>rate_limits</td><td>限流</td><td>key, count, window_start</td></tr>
+<tr><td>exam_sessions</td><td>考试会话(未使用)</td><td>mode, question_ids, score</td></tr>
+<tr><td>settings</td><td>系统设置</td><td>key, value</td></tr>
+</table>
+
+<h3>API 端点清单（32 个）</h3>
+<table>
+<tr><th>分类</th><th>端点</th><th>方法</th><th>说明</th></tr>
+<tr><td>页面</td><td>/, /lite, /sw.js</td><td>GET</td><td>首页、轻量版SSR、SW</td></tr>
+<tr><td>题目</td><td>/api/questions, /api/questions/random, /api/questions/&lt;qid&gt;</td><td>GET</td><td>题目列表/随机/详情</td></tr>
+<tr><td>答题</td><td>/api/submit, /api/stats, /api/reset_stats</td><td>POST/GET</td><td>提交答案/统计/重置</td></tr>
+<tr><td>错题/收藏</td><td>/api/mistakes, /api/favorites, /api/favorites/&lt;qid&gt;</td><td>GET/POST/DELETE</td><td>错题本/收藏管理</td></tr>
+<tr><td>认证</td><td>/api/auth/register, /login, /me, /logout</td><td>POST/GET</td><td>注册/登录/查询/登出</td></tr>
+<tr><td>题库</td><td>/api/banks, /api/banks/&lt;id&gt;, /questions, /progress, /import, /subscribe</td><td>GET/POST/PUT/DELETE</td><td>题库 CRUD + 导入 + 订阅</td></tr>
+<tr><td>管理</td><td>/api/admin/questions, /import/csv, /template, /dedupe, /backup, /reports</td><td>GET/POST/PUT/DELETE</td><td>管理后台</td></tr>
+<tr><td>举报</td><td>/api/questions/&lt;qid&gt;/report</td><td>POST</td><td>举报题目</td></tr>
+</table>
+
+<h3>文件规模</h3>
+<table>
+<tr><th>文件</th><th>行数</th><th>职责</th></tr>
+<tr><td>backend/app.py</td><td>781</td><td>Flask 路由(32个) + 业务逻辑 + 判分 + 权限 + 会话</td></tr>
+<tr><td>backend/database.py</td><td>884</td><td>SQLite Schema + 4步迁移 + 全部 CRUD (11张表)</td></tr>
+<tr><td>backend/static/js/app.js</td><td>1438</td><td>Vue 3 单文件应用 (刷题/管理/认证/题库/复习/离线)</td></tr>
+<tr><td>backend/templates/index.html</td><td>1601</td><td>单页 HTML (860行CSS + 740行Vue模板)</td></tr>
+<tr><td>backend/auth.py</td><td>88</td><td>密码哈希 + CSRF + 限流</td></tr>
+<tr><td>backend/permissions.py</td><td>68</td><td>can_read_bank / can_write_bank / can_import_to_bank</td></tr>
+</table>
+</div>
+
+<!-- ==================== 2. 路线图 ==================== -->
+<h2>02. 产品路线图 (roadmap-2026-summer.md)</h2>
+<div class="doc-section">
+<div class="doc-meta">
+<span><b>创建日期：</b>2026-06-29</span>
+<span><b>时间跨度：</b>暑假 8 周</span>
+<span><b>状态：</b>阶段 1-2 完成，阶段 3(UGC) 已完成</span>
+</div>
+
+<h3>四阶段规划</h3>
+
+<h4>阶段 1：快而稳（第 1-2 周）</h4>
+<ul>
+<li>UptimeRobot 定时 ping 保活（解决 PythonAnywhere 冷启动）</li>
+<li>Service Worker 离线答题（NetworkFirst 5s 超时 → fallback cache）</li>
+<li>骨架屏 + 渐进加载优化</li>
+<li>Playwright E2E 测试框架（8 项测试覆盖核心路径）</li>
+<li>Lighthouse 性能评分 ≥ 80</li>
+</ul>
+<p><b>完成状态：</b>SW 离线 + E2E 测试 + 骨架屏已完成。UptimeRobot 和 Lighthouse 待完成。</p>
+
+<h4>阶段 2：自己能加题（第 3-4 周）</h4>
+<ul>
+<li>CSV 题目导入（提供模板 + 格式校验 + 错误报告）</li>
+<li>Admin Token 认证（require_admin 装饰器）</li>
+<li>题目管理界面（查看/删除/筛选）</li>
+<li>CI/CD 自动部署</li>
+</ul>
+<p><b>完成状态：</b>CSV 导入 + 管理界面已完成。CI/CD 待完成。</p>
+
+<h4>阶段 3：记住我是谁（第 5-6 周）</h4>
+<ul>
+<li>用户注册/登录（学号 + 密码，pbkdf2_sha256，零新依赖）</li>
+<li>session_id → user_id 数据迁移（事务 + 去重 + 幂等）</li>
+<li>UGC 题库系统（创建/导入/公开/订阅/举报）</li>
+<li>跨设备数据同步</li>
+<li>班级排行榜</li>
+</ul>
+<p><b>完成状态：</b>用户认证 + UGC 题库 + 权限模型已完成。排行榜待完成。</p>
+
+<h4>阶段 4：告诉我该学什么（第 7-8 周）</h4>
+<ul>
+<li>知识点掌握度雷达图</li>
+<li>错题趋势分析（时间轴）</li>
+<li>复习计划推荐</li>
+<li>周/月学习报告</li>
+<li>数据导出 CSV/Excel</li>
+</ul>
+<p><b>完成状态：</b>未开始。</p>
+
+<h3>技术债务清单</h3>
+<ul>
+<li>根目录冗余文件（index.html, sw.js 等与 backend/ 下重复）</li>
+<li>app.py 胖控制器（781 行，未使用 Blueprint）</li>
+<li>双身份模型（session_id + user_id 并存导致双分支）</li>
+<li>无测试覆盖率配置</li>
+<li>无 CI/CD 流水线</li>
+</ul>
+
+<h3>风险应对</h3>
+<ul>
+<li>PythonAnywhere 免费层限制 → 多端部署方案（Render/Docker/exe）</li>
+<li>冷启动 5-10 秒 → NetworkFirst 5s 超时 + UptimeRobot 保活</li>
+<li>SQLite 并发 → WAL 模式 + threading.Lock + 单长连接</li>
+<li>Vue CDN 无组件化 → ADR-001 已记录为有意取舍</li>
+</ul>
+</div>
+
+<!-- ==================== 3. 宪法 ==================== -->
+<h2>03. 项目宪法 (CONSTITUTION.md)</h2>
+<div class="doc-section">
+<div class="doc-meta">
+<span><b>文件路径：</b>.spec/CONSTITUTION.md</span>
+<span><b>性质：</b>不可违反的架构约束</span>
+</div>
+
+<h3>技术栈约束表</h3>
+<table>
+<tr><th>层级</th><th>必须使用</th><th>禁止使用</th></tr>
+<tr><td>后端框架</td><td>Flask 3.0.3</td><td>Django, FastAPI, ORM</td></tr>
+<tr><td>数据库</td><td>SQLite (内置 sqlite3)</td><td>PostgreSQL, MySQL, SQLAlchemy</td></tr>
+<tr><td>前端框架</td><td>Vue 3 (CDN)</td><td>React, Angular, 构建工具</td></tr>
+<tr><td>部署平台</td><td>PythonAnywhere</td><td>需要 Node.js 的平台</td></tr>
+<tr><td>测试</td><td>pytest</td><td>unittest</td></tr>
+<tr><td>密码哈希</td><td>pbkdf2_sha256 (内置库)</td><td>bcrypt, argon2 (外部依赖)</td></tr>
+</table>
+
+<h3>5 条架构约束</h3>
+<ol>
+<li><b>零外部 JS 依赖</b>：前端仅用 Vue 3 CDN，不引入 UI 库</li>
+<li><b>单文件数据库</b>：所有数据在 SQLite，不引入外部数据库</li>
+<li><b>无构建步骤</b>：前端无 webpack/vite，后端无编译</li>
+<li><b>API 优先</b>：所有数据通过 JSON API 交互，页面仅渲染 HTML 骨架</li>
+<li><b>渐进增强</b>：JS 不可用时 /lite 页面可用（SSR, ES5）</li>
+</ol>
+
+<h3>数据流图</h3>
+<pre><code>用户浏览器                    PythonAnywhere                    SQLite
+┌──────────┐   HTTPS JSON    ┌──────────────┐   sqlite3    ┌──────────┐
+│ Vue 3 SPA│ ←─────────────→ │ Flask 3.0.3  │ ←──────────→ │ quiz.db  │
+│ (app.js) │   X-Session-Id  │ (app.py)     │   WAL 模式   │ (单文件)  │
+│          │   X-CSRF-Token  │              │              └──────────┘
+│ SW Cache │                 │ auth.py      │
+│ (离线)   │                 │ permissions  │
+└──────────┘                 │ database.py  │
+                             └──────────────┘</code></pre>
+
+<h3>代码风格规范</h3>
+<h4>JavaScript</h4>
+<ul>
+<li>使用 const/let，禁止 var</li>
+<li>数组赋值用展开拷贝：[...arr] 而非直接引用</li>
+<li>Vue 模板用 [[ ]] 插值（避免与 Jinja2 冲突）</li>
+</ul>
+<h4>Python</h4>
+<ul>
+<li>类型提示：所有公开函数标注参数和返回类型</li>
+<li>SQL 全部参数化查询（? 占位符），禁止字符串拼接</li>
+<li>动态列名用白名单过滤</li>
+<li>异常处理：except 具体异常，禁止 except: pass</li>
+</ul>
+
+<h3>8 条禁止事项</h3>
+<ol>
+<li>禁止引入 Node.js / npm 构建工具</li>
+<li>禁止使用 ORM（SQLAlchemy 等）</li>
+<li>禁止引入前端 UI 库（Element UI 等）</li>
+<li>禁止在代码中硬编码密码或 token</li>
+<li>禁止在 SQL 中拼接用户输入</li>
+<li>禁止使用 var 声明变量</li>
+<li>禁止在 except 中无日志静默吞异常</li>
+<li>禁止前端变更不升级 SW 版本号</li>
+</ol>
+
+<h3>部署检查清单</h3>
+<ul>
+<li>所有测试通过：python -m pytest backend/tests/ -v</li>
+<li>SW 版本号已升级</li>
+<li>部署文件清单包含 sw.js</li>
+<li>线上验证：/api/questions 返回正常</li>
+<li>线上验证：/api/auth/me 返回正常</li>
+<li>线上验证：/api/banks 返回正常</li>
+</ul>
+</div>
+
+<!-- ==================== 4. 工作流设计 ==================== -->
+<h2>04. SDD 工作流设计 (workflow-design.md)</h2>
+<div class="doc-section">
+<div class="doc-meta">
+<span><b>文件路径：</b>docs/workflow-design.md</span>
+<span><b>核心理念：</b>Spec-Driven Development（规格驱动开发）</span>
+</div>
+
+<h3>SDD 三层文档体系</h3>
+<pre><code>CONSTITUTION.md  ← 项目宪法（不可违反的约束）
+       ↓
+SPEC.md          ← 功能规格（做什么、怎么做、验收标准）
+       ↓
+REVIEW.md        ← 审查清单（自检 + 验收）
+
+memory-bank/
+  progress.yaml  ← 进度快照（当前状态、成就、已知问题）
+  decisions.md   ← 架构决策记录（ADR）
+
+tasks.md         ← 任务清单（状态机：[ ] [~] [x] [!]）</code></pre>
+
+<h3>7 步标准开发循环</h3>
+<ol>
+<li><b>读上下文</b> — 读 AGENTS.md → progress.yaml → 相关 SPEC</li>
+<li><b>写 SPEC</b> — 在 .spec/specs/ 下写功能规格文档</li>
+<li><b>实现</b> — 按 SPEC 编写代码，遵循 CONSTITUTION 约束</li>
+<li><b>测试</b> — 编写测试用例，运行 pytest 全部通过</li>
+<li><b>自检</b> — 填写 .spec/reviews/ 审查清单</li>
+<li><b>提交部署</b> — git commit + push + PythonAnywhere 部署</li>
+<li><b>更新进度</b> — 更新 progress.yaml 和 tasks.md</li>
+</ol>
+
+<h3>跨会话接力协议</h3>
+<blockquote>
+新会话开始时：(1) 读 AGENTS.md 了解项目入口 → (2) 读 progress.yaml 了解当前状态 → (3) 读 tasks.md 了解待办任务 → (4) 读相关 SPEC 了解功能规格。
+</blockquote>
+
+<h3>任务编排矩阵</h3>
+<table>
+<tr><th>任务类型</th><th>输入</th><th>技能/Agent</th><th>输出</th></tr>
+<tr><td>需求分析</td><td>用户描述</td><td>brainstorming</td><td>SPEC 草稿</td></tr>
+<tr><td>架构设计</td><td>SPEC 草稿</td><td>Plan Agent</td><td>架构方案 + ADR</td></tr>
+<tr><td>前端开发</td><td>SPEC + 设计</td><td>frontend-design</td><td>Vue 组件 + CSS</td></tr>
+<tr><td>后端开发</td><td>SPEC + 架构</td><td>TDD + general_purpose_task</td><td>Flask 路由 + 数据库</td></tr>
+<tr><td>代码审查</td><td>代码提交</td><td>requesting-code-review</td><td>审查报告</td></tr>
+<tr><td>部署</td><td>通过审查的代码</td><td>pythonanywhere-deploy</td><td>线上版本</td></tr>
+<tr><td>Bug 修复</td><td>问题报告</td><td>systematic-debugging</td><td>修复 + 回归测试</td></tr>
+</table>
+</div>
+
+<!-- ==================== 5. UGC 设计文档 ==================== -->
+<h2>05. UGC 题库系统设计文档 (v2)</h2>
+<div class="doc-section">
+<div class="doc-meta">
+<span><b>文件路径：</b>docs/superpowers/specs/2026-07-01-ugc-question-banks-design.md</span>
+<span><b>版本：</b>v2（安全/权限/迁移审查修订版）</span>
+<span><b>状态：</b>已实现</span>
+</div>
+
+<h3>设计目标</h3>
+<ul>
+<li>用户注册/登录（学号 + 密码，零新依赖）</li>
+<li>每用户可创建多个私有题库，CSV 批量导入</li>
+<li>题库可设为公开，其他用户可订阅刷题</li>
+<li>自动审核（先检测后转义）+ 举报机制</li>
+<li>现有题库迁移为官方题库，零数据丢失</li>
+</ul>
+
+<h3>4 步渐进实施</h3>
+<table>
+<tr><th>步骤</th><th>内容</th><th>风险</th><th>状态</th></tr>
+<tr><td>Step 0</td><td>官方题库抽象（question_banks 表 + questions.bank_id 列）</td><td>低</td><td><span class="badge b-green">完成</span></td></tr>
+<tr><td>Step 1</td><td>用户系统（users 表 + 注册/登录 + CSRF + 限流 + 数据迁移）</td><td>中</td><td><span class="badge b-green">完成</span></td></tr>
+<tr><td>Step 2</td><td>私有题库（CRUD + CSV 导入 + 权限 + 自动审核）</td><td>中</td><td><span class="badge b-green">完成</span></td></tr>
+<tr><td>Step 3</td><td>公开题库（visibility public + 订阅 + 举报 + 管理面板）</td><td>高</td><td><span class="badge b-green">完成</span></td></tr>
+</table>
+
+<h3>认证机制</h3>
+<ul>
+<li><b>密码哈希</b>：pbkdf2_sha256$300000$salt_hex$hash_hex（30 万次迭代，16 字节 salt）</li>
+<li><b>会话</b>：Flask session（签名防篡改），cookie: HttpOnly + SameSite=Lax + Secure</li>
+<li><b>CSRF</b>：登录后生成 csrf_token，非 GET 请求须带 X-CSRF-Token header</li>
+<li><b>限流</b>：登录 10次/10分钟、注册 5次/小时、导入 10次/天、举报 5次/小时</li>
+<li><b>防时序攻击</b>：secrets.compare_digest 常数时间比较</li>
+</ul>
+
+<h3>权限模型</h3>
+<table>
+<tr><th>操作</th><th>未登录</th><th>已登录(非owner)</th><th>owner</th><th>admin</th></tr>
+<tr><td>浏览公开/官方题库</td><td>可以</td><td>可以</td><td>可以</td><td>可以</td></tr>
+<tr><td>浏览私有题库</td><td>不可</td><td>不可</td><td>可以</td><td>可以</td></tr>
+<tr><td>创建题库</td><td>不可</td><td>可以</td><td>—</td><td>可以</td></tr>
+<tr><td>导入题目</td><td>不可</td><td>仅自己的</td><td>—</td><td>任意</td></tr>
+<tr><td>编辑/删除题库</td><td>不可</td><td>不可</td><td>可以</td><td>可以</td></tr>
+</table>
+
+<h3>数据迁移方案</h3>
+<ul>
+<li>questions 表重建：UNIQUE(course, stem) → UNIQUE(bank_id, stem)</li>
+<li>事务 + 数据量校验（old_count == new_count）</li>
+<li>匿名 session_id 数据迁移到 user_id：去重 + 事务 + 幂等</li>
+<li>向后兼容：未登录用户继续使用 X-Session-Id</li>
+</ul>
+
+<h3>P0 清单（上线前必须完成，12 项）</h3>
+<ol>
+<li>Flask session cookie 安全配置</li>
+<li>所有非 GET 请求 CSRF 防护</li>
+<li>密码哈希格式 pbkdf2_sha256（可升级）</li>
+<li>登录/注册/导入/举报限流</li>
+<li>SQLite 迁移用重建表方案</li>
+<li>官方题库 question_count 动态计算</li>
+<li>权限判断集中封装</li>
+<li>sanitize_question 先检测后转义</li>
+<li>必要索引（bank_id, owner_id, visibility, user_id+bank_id）</li>
+<li>迁移匿名数据：去重 + 事务 + 幂等</li>
+<li>answer_records/mistakes/favorites 增加 bank_id 冗余列</li>
+<li>已登录用户进度以后端为准，localStorage 仅缓存</li>
+</ol>
+</div>
+
+<!-- ==================== 6. ADR ==================== -->
+<h2>06. 架构决策记录 (ADR, 6 条)</h2>
+<div class="doc-section">
+<div class="doc-meta">
+<span><b>文件路径：</b>memory-bank/decisions.md</span>
+<span><b>条目数：</b>6 条</span>
+</div>
+
+<h3>ADR-001: Vue 3 CDN 而非 SPA 构建工具</h3>
+<p><b>背景：</b>PythonAnywhere 免费层不支持 Node.js 运行时，无法在服务端执行构建步骤。</p>
+<p><b>决策：</b>使用 Vue 3 CDN 引入，无 webpack/vite 构建步骤。前端代码为单个 app.js 文件。</p>
+<p><b>后果：</b>正面：部署简单，只需上传静态文件。负面：无 SFC 组件化，app.js 可能膨胀；无 TypeScript 类型检查。</p>
+
+<h3>ADR-002: Session ID 数据隔离而非用户登录</h3>
+<p><b>背景：</b>刷题系统需要数据隔离，但实现完整用户登录系统成本过高。</p>
+<p><b>决策：</b>前端生成随机 Session ID 存入 localStorage，每次 API 请求通过 X-Session-Id header 传递，后端按 session_id 过滤数据。</p>
+<p><b>后果：</b>正面：零成本实现隔离，用户无感知。负面：换设备/清缓存后数据丢失；无法跨设备同步。</p>
+<blockquote><b>注意：</b>UGC 功能实现后，此决策已被部分覆盖——现在 session_id 和 user_id 并存，导致双身份模型架构债务。</blockquote>
+
+<h3>ADR-003: SW StaleWhileRevalidate 而非 CacheFirst</h3>
+<p><b>背景：</b>原方案用 CacheFirst 缓存 app.js，导致用户拿到旧版本 JS（缺少新变量），Vue 挂载失败白屏。</p>
+<p><b>决策：</b>静态资源改用 StaleWhileRevalidate——先返回缓存快速加载，同时后台拉取最新版本更新缓存。SW 版本号每次前端变更必须升级。</p>
+
+<h3>ADR-004: 单题流模式 (cursor + doneSet)</h3>
+<p><b>背景：</b>用户反馈"刷题回溯继续错题结构乱"——继续做题按页数回溯、切换 Tab 丢失位置、已做未做混淆。</p>
+<p><b>决策：</b>默认单题流模式。cursor 全局游标定位当前题，doneSet 记录已做题号，nextQuestion 自动跳过已做。</p>
+
+<h3>ADR-005: Files API 部署而非控制台命令</h3>
+<p><b>背景：</b>PythonAnywhere 控制台 API 需要浏览器先加载控制台页面才能使用（412 错误），自动化部署不可靠。</p>
+<p><b>决策：</b>使用 Files API (multipart/form-data) 直接上传文件到远程路径，然后 reload Web 应用。无需控制台。</p>
+
+<h3>ADR-006: SDD 工作流替代 HTML 看板</h3>
+<p><b>背景：</b>原方案用 900+ 行 HTML 看板作为 AI 上下文投喂工具，存在信噪比低、不可版本化、加剧上下文腐败等问题。</p>
+<p><b>决策：</b>采用 SDD 体系：CONSTITUTION.md + SPEC.md + REVIEW.md + memory-bank/ + tasks.md。</p>
+</div>
+
+<!-- ==================== 7. AGENTS.md ==================== -->
+<h2>07. AI 代理入职文件 (AGENTS.md)</h2>
+<div class="doc-section">
+<div class="doc-meta">
+<span><b>文件路径：</b>AGENTS.md</span>
+<span><b>用途：</b>AI 代理的项目入口文档</span>
+</div>
+
+<h3>开发规则（7 条）</h3>
+<ol>
+<li>每次前端变更必须升级 SW 版本号（sw.js 中 CACHE_VERSION）</li>
+<li>部署清单必须包含 sw.js（Files API 上传）</li>
+<li>所有 API 使用 session_id 隔离（X-Session-Id header）</li>
+<li>测试通过才能提交：python -m pytest backend/tests/ -v</li>
+<li>提交前做边界条件审查：溢出、空值、引用共享</li>
+<li>数组赋值用展开拷贝：[...arr] 而非直接引用</li>
+<li>单次提交只做一件事：遵循 Conventional Commits</li>
+</ol>
+
+<h3>按需加载表</h3>
+<table>
+<tr><th>文件</th><th>何时加载</th></tr>
+<tr><td>.spec/CONSTITUTION.md</td><td>需要了解架构约束、代码风格时</td></tr>
+<tr><td>memory-bank/progress.yaml</td><td>新会话开始时，了解当前进度</td></tr>
+<tr><td>memory-bank/decisions.md</td><td>需要了解架构决策背景时</td></tr>
+<tr><td>tasks.md</td><td>需要查看任务清单时</td></tr>
+<tr><td>.spec/specs/*.md</td><td>开发对应功能时</td></tr>
+<tr><td>.spec/reviews/*.md</td><td>审查对应功能时</td></tr>
+</table>
+
+<h3>已知限制</h3>
+<ul>
+<li>PythonAnywhere 免费层冷启动 5-10 秒</li>
+<li>doneSet 纯客户端 localStorage，换设备不同步（设计限制）</li>
+<li>CSP 允许 unsafe-eval（Vue CDN 需要）</li>
+</ul>
+</div>
+
+<!-- ==================== 8. 代码审查报告 ==================== -->
+<h2>08. 代码审查报告</h2>
+<div class="doc-section">
+<div class="doc-meta">
+<span><b>文件路径：</b>UGC题库系统_最终代码审查报告.md</span>
+<span><b>审查范围：</b>17 个功能提交 + 1 个修复提交</span>
+<span><b>测试结果：</b>151 项测试全部通过</span>
+<span><b>总体判定：</b><span class="badge b-red">NEEDS_FIX</span></span>
+</div>
+
+<h3>Critical 级别（1 项，已修复）</h3>
+<div style="background:rgba(248,113,113,0.08);border:1px solid var(--red);border-radius:8px;padding:16px;margin:12px 0;">
+<p><b>C-1. /api/questions 系列端点缺少题库权限校验 — 私有题库数据泄露</b></p>
+<p><b>影响：</b>任何用户（包括未登录）可通过传入私有题库的 bank_id 直接获取题目、答案、解析。/api/questions 不传 bank_id 时返回所有题库题目（包括私有）。/api/submit 不检查题目所属题库权限。</p>
+<p><b>修复：</b>在 /api/questions、/api/questions/random、/api/questions/&lt;qid&gt;、/api/submit 中增加 can_read_bank 权限校验。无 bank_id 时默认官方题库（bank_id=1）。</p>
+<p><b>状态：</b><span class="badge b-green">已修复（commit 5c74ab6）</span></p>
+</div>
+
+<h3>Important 级别（4 项，均已修复）</h3>
+<table>
+<tr><th>编号</th><th>问题</th><th>影响</th><th>状态</th></tr>
+<tr><td>I-1</td><td>flagged 审核标记列从未被写入数据库</td><td>管理员无法筛选被标记题目</td><td><span class="badge b-green">已修复</span></td></tr>
+<tr><td>I-2</td><td>sanitize_question 未处理 answer 字段</td><td>答案字段可能含 XSS 载荷</td><td><span class="badge b-green">已修复</span></td></tr>
+<tr><td>I-3</td><td>订阅路由未检查题库 status</td><td>hidden/deleted 题库仍可被订阅</td><td><span class="badge b-green">已修复</span></td></tr>
+<tr><td>I-4</td><td>登录限流覆盖所有尝试而非仅失败</td><td>成功登录 10 次后被锁定</td><td><span class="badge b-green">已修复</span></td></tr>
+</table>
+
+<h3>Minor 级别（5 项，可选修复）</h3>
+<table>
+<tr><th>编号</th><th>问题</th><th>状态</th></tr>
+<tr><td>M-1</td><td>/api/auth/logout 豁免 CSRF 保护</td><td>低风险</td></tr>
+<tr><td>M-2</td><td>迁移后 options_json/answer_json 丢失 NOT NULL 约束</td><td>无功能影响</td></tr>
+<tr><td>M-3</td><td>错误响应格式不完全统一</td><td>无功能影响</td></tr>
+<tr><td>M-4</td><td>限流清理在每次检查时执行 DELETE</td><td>小规模无影响</td></tr>
+<tr><td>M-5</td><td>update_bank 允许 owner 修改 status 字段</td><td>可能是有意设计</td></tr>
+</table>
+
+<h3>安全评估摘要</h3>
+<table>
+<tr><th>维度</th><th>评级</th><th>说明</th></tr>
+<tr><td>密码安全</td><td><span class="badge b-green">优秀</span></td><td>pbkdf2_sha256 30万次迭代，secrets.compare_digest 防时序攻击</td></tr>
+<tr><td>CSRF 防护</td><td><span class="badge b-green">良好</span></td><td>登录后非 GET 请求须带 X-CSRF-Token</td></tr>
+<tr><td>限流</td><td><span class="badge b-green">良好</span></td><td>4 个接口限流，基于 SQLite 滑动窗口</td></tr>
+<tr><td>SQL 注入</td><td><span class="badge b-green">优秀</span></td><td>全部参数化查询，动态列名白名单过滤</td></tr>
+<tr><td>XSS 防护</td><td><span class="badge b-green">良好</span></td><td>先检测后转义，Vue 文本插值自动转义，无 v-html</td></tr>
+<tr><td>数据迁移</td><td><span class="badge b-green">优秀</span></td><td>事务 + 数据量校验 + 去重 + 幂等</td></tr>
+<tr><td>Session 安全</td><td><span class="badge b-green">优秀</span></td><td>HttpOnly + SameSite + Secure + 30天有效期</td></tr>
+</table>
+</div>
+
+<!-- ==================== 9. 进度与任务 ==================== -->
+<h2>09. 进度快照与任务清单</h2>
+<div class="doc-section">
+<div class="doc-meta">
+<span><b>文件路径：</b>memory-bank/progress.yaml + tasks.md</span>
+<span><b>最后更新：</b>2026-06-29（需更新）</span>
+</div>
+
+<h3>当前状态</h3>
+<table>
+<tr><th>项目</th><th>记录值</th><th>实际值</th><th>是否准确</th></tr>
+<tr><td>测试数量</td><td>77</td><td>151</td><td><span class="badge b-red">过期</span></td></tr>
+<tr><td>SW 版本</td><td>v8</td><td>v12</td><td><span class="badge b-red">过期</span></td></tr>
+<tr><td>最后提交</td><td>3541310</td><td>1a6442e</td><td><span class="badge b-red">过期</span></td></tr>
+<tr><td>功能状态</td><td>安全加固完成</td><td>UGC 题库系统已完成</td><td><span class="badge b-red">过期</span></td></tr>
+</table>
+
+<h3>已完成阶段（11 个）</h3>
+<table>
+<tr><th>阶段</th><th>名称</th><th>状态</th></tr>
+<tr><td>Phase 1</td><td>基础 Bug 修复</td><td><span class="badge b-green">done</span></td></tr>
+<tr><td>Phase 2</td><td>UI 优化 + 筛选重构</td><td><span class="badge b-green">done</span></td></tr>
+<tr><td>Phase 2.5</td><td>遗漏修复 + Anki 复习</td><td><span class="badge b-green">done</span></td></tr>
+<tr><td>Phase 3</td><td>白屏修复 + 数据隔离</td><td><span class="badge b-green">done</span></td></tr>
+<tr><td>Phase 4</td><td>单题流重构</td><td><span class="badge b-green">done</span></td></tr>
+<tr><td>Phase 5</td><td>SDD 工作流体系建设</td><td><span class="badge b-green">done</span></td></tr>
+<tr><td>阶段 1</td><td>SW 离线答题 + E2E 测试</td><td><span class="badge b-green">done</span></td></tr>
+<tr><td>阶段 2</td><td>CSV 批量导入 + 管理界面</td><td><span class="badge b-green">done</span></td></tr>
+<tr><td>安全加固</td><td>安全漏洞修复 + UX优化</td><td><span class="badge b-green">done</span></td></tr>
+<tr><td>UGC Step 0-3</td><td>用户认证 + 题库 CRUD + 权限 + 订阅 + 举报</td><td><span class="badge b-green">done</span></td></tr>
+<tr><td>Bug 修复</td><td>uploadCSV 重复声明修复</td><td><span class="badge b-green">done</span></td></tr>
+</table>
+
+<h3>待办任务</h3>
+<table>
+<tr><th>阶段</th><th>任务</th><th>优先级</th></tr>
+<tr><td>阶段 1</td><td>UptimeRobot 保活配置</td><td>中</td></tr>
+<tr><td>阶段 1</td><td>Lighthouse 性能评分 ≥ 80</td><td>中</td></tr>
+<tr><td>阶段 2</td><td>CI/CD 自动部署</td><td>中</td></tr>
+<tr><td>阶段 3</td><td>班级/学习群组 + 邀请码</td><td>低</td></tr>
+<tr><td>阶段 3</td><td>班级排行榜</td><td>低</td></tr>
+<tr><td>阶段 4</td><td>知识点掌握度雷达图</td><td>低</td></tr>
+<tr><td>阶段 4</td><td>错题趋势分析</td><td>低</td></tr>
+<tr><td>阶段 4</td><td>复习计划推荐</td><td>低</td></tr>
+<tr><td>阶段 4</td><td>周/月学习报告</td><td>低</td></tr>
+<tr><td>阶段 4</td><td>数据导出 CSV/Excel</td><td>低</td></tr>
+</table>
+</div>
+
+<!-- ==================== 10. 配置文件 ==================== -->
+<h2>10. 配置文件与依赖</h2>
+<div class="doc-section">
+
+<h3>config.yaml（全局配置）</h3>
+<pre><code>server:
+  host: "127.0.0.1"
+  port: 5000
+  debug: false
+
+storage:
+  db_path: "data/quiz.db"
+  backup_dir: "data/backups"
+
+quiz:
+  default_page_size: 20
+  max_page_size: 100
+  shuffle: false
+  time_limit_minutes: 0
+
+security:
+  admin_enabled: true
+  admin_token_env: "QUIZ_ADMIN_TOKEN"
+  secret_key_env: "SECRET_KEY"
+  rate_limit_per_minute: 60
+
+logging:
+  level: "INFO"
+  file: "logs/app.log"
+  max_bytes: 10485760
+  backup_count: 5</code></pre>
+
+<h3>requirements.txt（Python 依赖，仅 4 个）</h3>
+<pre><code>flask==3.0.3
+werkzeug==3.0.3
+gunicorn==23.0.0
+pyyaml==6.0.1</code></pre>
+
+<h3>部署方案对比</h3>
+<table>
+<tr><th>方案</th><th>配置文件</th><th>状态</th><th>说明</th></tr>
+<tr><td>PythonAnywhere</td><td>.trae/skills/pythonanywhere-deploy/SKILL.md</td><td><span class="badge b-green">在用</span></td><td>免费层，Files API 5步智能部署</td></tr>
+<tr><td>Render</td><td>render.yaml</td><td><span class="badge b-yellow">已配置</span></td><td>Python 3.11.11，gunicorn，1GB 持久磁盘</td></tr>
+<tr><td>Docker</td><td>Dockerfile + docker-compose.yml</td><td><span class="badge b-yellow">已配置</span></td><td>python:3.11-slim，端口 5000</td></tr>
+<tr><td>桌面 exe</td><td>build.spec</td><td><span class="badge b-yellow">已配置</span></td><td>PyInstaller + pywebview</td></tr>
+</table>
+
+<h3>Git 提交历史（最近 10 条）</h3>
+<pre><code>1a6442e fix: resolve uploadCSV duplicate declaration causing Vue mount failure
+84f4d05 fix: CSV导入入口 + 切换题库刷新统计/课程列表 + stats支持bank_id
+75c3373 feat: PythonAnywhere 智能部署技能 + pa_smart_deploy.py
+5c74ab6 fix: 遗留端点权限校验 + flagged列写入 + sanitize answer + 订阅状态检查
+8c57b36 fix: checkAuth 恢复 CSRF token + 加载题库列表
+3487607 feat: 前端 — 登录注册 UI + 题库选择 + 进度同步
+10e9082 feat: Step 3 — 公开题库订阅/退订 + 权限校验
+657af50 feat: Step 3 — reports 表 + 举报路由 + 管理员审核面板
+a4f8156 feat: Step 2 — CSV 导入到指定题库 + sanitize + 限流
+524fbfe feat: Step 2 — sanitize_question 先检测后转义 + 长度限制</code></pre>
+</div>
+
+<!-- ==================== 架构债务总结 ==================== -->
+<h2>11. 已知架构债务汇总（供分析参考）</h2>
+<div class="doc-section">
+
+<h3>P0 — 严重（影响可维护性）</h3>
+<table>
+<tr><th>编号</th><th>问题</th><th>影响范围</th><th>建议</th></tr>
+<tr><td>D-1</td><td>双身份模型（session_id + user_id 并存）</td><td>database.py 几乎所有方法双分支</td><td>统一为 user_id 模型，匿名用户自动创建临时 user</td></tr>
+<tr><td>D-2</td><td>app.py 胖控制器（781 行）</td><td>路由+业务+判分+权限混合</td><td>拆分为 Flask Blueprint + Service 层</td></tr>
+<tr><td>D-3</td><td>database.py 过载（884 行）</td><td>Schema+迁移+CRUD 全在一个类</td><td>拆分为 Repository 模式</td></tr>
+</table>
+
+<h3>P1 — 中等</h3>
+<table>
+<tr><th>编号</th><th>问题</th><th>建议</th></tr>
+<tr><td>D-4</td><td>前后端判分逻辑重复</td><td>抽取为独立 grading.py 模块</td></tr>
+<tr><td>D-5</td><td>双重管理员机制（令牌 vs 角色）</td><td>统一为角色鉴权</td></tr>
+<tr><td>D-6</td><td>迁移 except:pass 静默吞异常</td><td>改为 except SpecificException + 日志</td></tr>
+<tr><td>D-7</td><td>权限检查不一致</td><td>统一使用 _check_bank_access</td></tr>
+<tr><td>D-8</td><td>无测试覆盖率配置</td><td>创建 pyproject.toml + pytest-cov</td></tr>
+</table>
+
+<h3>P2 — 轻微</h3>
+<table>
+<tr><th>编号</th><th>问题</th></tr>
+<tr><td>D-9</td><td>config.yaml 与 DEFAULT_CONFIG 重复</td></tr>
+<tr><td>D-10</td><td>secret_key 随机回退无启动警告</td></tr>
+<tr><td>D-11</td><td>exam_sessions 表为死代码</td></tr>
+<tr><td>D-12</td><td>CSP 允许 unsafe-eval</td></tr>
+<tr><td>D-13</td><td>根目录冗余文件</td></tr>
+<tr><td>D-14</td><td>import 位置违反 PEP8</td></tr>
+</table>
+</div>
+
+<div class="footer">
+期末冲刺刷题系统 · 完整项目文档集 · 2026-07-02<br>
+共 11 份文档 · 供其他 AI 完整分析和评估使用
+</div>
+
+</body>
+</html>

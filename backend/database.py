@@ -146,9 +146,18 @@ class QuizDatabase:
                     password_hash TEXT NOT NULL,
                     nickname TEXT NOT NULL,
                     role TEXT NOT NULL DEFAULT 'student'
-                        CHECK (role IN ('student', 'admin')),
+                        CHECK (role IN ('student', 'admin', 'anonymous')),
+                    session_uuid TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS session_user_map (
+                    session_id TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_sum_user ON session_user_map(user_id);
 
                 CREATE TABLE IF NOT EXISTS rate_limits (
                     key TEXT NOT NULL,
@@ -181,6 +190,8 @@ class QuizDatabase:
             self._migrate_to_banks(conn)
             # 第四步：为 answer_records/mistakes/favorites 添加 user_id 和 bank_id 列
             self._migrate_user_bank_columns(conn)
+            # 第五步：身份模型统一 — 更新 users 表 CHECK 约束 + session_user_map
+            self._migrate_identity_unification(conn)
 
     def _pre_migrate(self, conn):
         """为旧版表添加 session_id 列（在 executescript 之前运行）"""
@@ -486,7 +497,14 @@ class QuizDatabase:
                     q.get("knowledge", ""),
                 ),
             )
-            return cur.lastrowid
+            if cur.lastrowid > 0:
+                return cur.lastrowid
+            # INSERT OR IGNORE 跳过时，返回已存在题目的 ID
+            row = conn.execute(
+                "SELECT id FROM questions WHERE bank_id = ? AND stem = ?",
+                (bank_id, q.get("stem"))
+            ).fetchone()
+            return row[0] if row else 0
 
     def batch_add_questions(self, questions: list, bank_id: int = 1) -> dict:
         """批量添加题目，利用 UNIQUE(bank_id, stem) 自动去重。
@@ -956,3 +974,158 @@ class QuizDatabase:
             conn.execute("DELETE FROM answer_records WHERE session_id=? AND user_id IS NULL", (session_id,))
             conn.execute("DELETE FROM favorites WHERE session_id=? AND user_id IS NULL", (session_id,))
             conn.execute("DELETE FROM mistakes WHERE session_id=? AND user_id IS NULL", (session_id,))
+
+    # ====== 身份模型统一 (Identity Unification) ======
+
+    def _migrate_identity_unification(self, conn):
+        """第五步迁移：更新 users 表 CHECK 约束支持 anonymous + 创建 session_user_map"""
+        # 1. 检查 users 表是否已支持 anonymous role
+        schema_row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
+        ).fetchone()
+        if schema_row and 'anonymous' not in schema_row[0]:
+            # 需要重建 users 表以更新 CHECK 约束
+            conn.execute("""
+                CREATE TABLE users_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    student_id TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    nickname TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'student'
+                        CHECK (role IN ('student', 'admin', 'anonymous')),
+                    session_uuid TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            # 检查旧表是否有 session_uuid 列
+            old_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+            if 'session_uuid' in old_cols:
+                conn.execute("""
+                    INSERT INTO users_new (id, student_id, password_hash, nickname, role, session_uuid, created_at)
+                    SELECT id, student_id, password_hash, nickname, role, session_uuid, created_at FROM users
+                """)
+            else:
+                conn.execute("""
+                    INSERT INTO users_new (id, student_id, password_hash, nickname, role, created_at)
+                    SELECT id, student_id, password_hash, nickname, role, created_at FROM users
+                """)
+            conn.execute("DROP TABLE users")
+            conn.execute("ALTER TABLE users_new RENAME TO users")
+
+        # 2. 确保 session_uuid 列存在（针对已迁移但无此列的情况）
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+        if 'session_uuid' not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN session_uuid TEXT")
+
+        # 3. 确保 session_user_map 表存在
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS session_user_map (
+                session_id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sum_user ON session_user_map(user_id)")
+
+    def create_anonymous_user(self, session_id: str) -> int:
+        """为匿名 session_id 创建或获取对应的 user_id。
+
+        幂等：同一 session_id 多次调用返回同一 user_id。
+        """
+        # 先查映射
+        existing = self.get_user_id_by_session(session_id)
+        if existing:
+            return existing
+
+        # 创建匿名用户
+        try:
+            with self.connection() as conn:
+                cur = conn.execute(
+                    """INSERT INTO users (student_id, password_hash, nickname, role, session_uuid)
+                    VALUES (?, '', '匿名用户', 'anonymous', ?)""",
+                    (f'anon:{session_id}', session_id)
+                )
+                uid = cur.lastrowid
+                # 创建映射
+                conn.execute(
+                    "INSERT OR IGNORE INTO session_user_map (session_id, user_id) VALUES (?, ?)",
+                    (session_id, uid)
+                )
+                return uid
+        except sqlite3.IntegrityError:
+            # 并发情况下可能另一个线程已创建，重新查询
+            existing = self.get_user_id_by_session(session_id)
+            if existing:
+                return existing
+            raise
+
+    def get_user_id_by_session(self, session_id: str):
+        """通过 session_id 查询映射的 user_id。未找到返回 None。"""
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT user_id FROM session_user_map WHERE session_id = ?",
+                (session_id,)
+            ).fetchone()
+        return row[0] if row else None
+
+    def merge_anonymous_to_user(self, anon_user_id: int, real_user_id: int):
+        """登录时将匿名用户数据合并到正式用户。
+
+        1. answer_records: 转移不重复的记录，删除重复的
+        2. mistakes: UPSERT (同题取最大 wrong_count)
+        3. favorites: INSERT OR IGNORE (去重)
+        4. 删除匿名 user 记录
+        5. 更新 session_user_map 指向 real_user_id
+        """
+        with self.connection() as conn:
+            # 1. answer_records: 转移不重复的，删除重复的
+            conn.execute("""
+                UPDATE answer_records SET user_id = ?
+                WHERE user_id = ? AND question_id NOT IN (
+                    SELECT question_id FROM answer_records WHERE user_id = ?
+                )
+            """, (real_user_id, anon_user_id, real_user_id))
+            conn.execute("DELETE FROM answer_records WHERE user_id = ?", (anon_user_id,))
+
+            # 2. mistakes: 先合并已有的（取最大 wrong_count），再转移不重复的
+            # 2a. 对于 real_user 已有的同题错题，更新 wrong_count 为最大值
+            conn.execute("""
+                UPDATE mistakes SET 
+                    wrong_count = MAX(mistakes.wrong_count, 
+                        (SELECT m2.wrong_count FROM mistakes m2 
+                         WHERE m2.user_id = ? AND m2.question_id = mistakes.question_id)),
+                    last_wrong_at = MAX(mistakes.last_wrong_at,
+                        (SELECT m2.last_wrong_at FROM mistakes m2 
+                         WHERE m2.user_id = ? AND m2.question_id = mistakes.question_id))
+                WHERE user_id = ? AND question_id IN (
+                    SELECT question_id FROM mistakes WHERE user_id = ?
+                )
+            """, (anon_user_id, anon_user_id, real_user_id, anon_user_id))
+            # 2b. 对于 real_user 没有的错题，直接转移到 real_user
+            conn.execute("""
+                UPDATE mistakes SET user_id = ?
+                WHERE user_id = ? AND question_id NOT IN (
+                    SELECT question_id FROM mistakes WHERE user_id = ?
+                )
+            """, (real_user_id, anon_user_id, real_user_id))
+            # 2c. 删除匿名用户残留的错题（已在 2a 合并的重复记录）
+            conn.execute("DELETE FROM mistakes WHERE user_id = ?", (anon_user_id,))
+
+            # 3. favorites: 转移不重复的，删除重复的
+            conn.execute("""
+                UPDATE favorites SET user_id = ?
+                WHERE user_id = ? AND question_id NOT IN (
+                    SELECT question_id FROM favorites WHERE user_id = ?
+                )
+            """, (real_user_id, anon_user_id, real_user_id))
+            conn.execute("DELETE FROM favorites WHERE user_id = ?", (anon_user_id,))
+
+            # 4. 删除匿名 user 记录
+            conn.execute("DELETE FROM users WHERE id = ? AND role = 'anonymous'", (anon_user_id,))
+
+            # 5. 更新 session_user_map 指向正式用户
+            conn.execute("""
+                UPDATE session_user_map SET user_id = ?
+                WHERE user_id = ?
+            """, (real_user_id, anon_user_id))

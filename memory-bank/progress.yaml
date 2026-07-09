@@ -1,7 +1,8 @@
 # ============================================
 # 期末冲刺刷题系统 — 进度快照
 # 新会话开始时读取此文件了解当前状态
-# 最后更新: 2026-07-02 (UGC题库系统完成+安全加固闭环)
+# 最后更新: 2026-07-09 (CI/CD + 身份模型统一 Phase 1)
+# 状态: CI/CD 已建，身份模型统一 Phase 1 完成
 # ============================================
 
 project:
@@ -9,16 +10,16 @@ project:
   url: https://3579828593.pythonanywhere.com
   repo: https://github.com/3579828593/RIcardo.git
   questions: 351
-  tests: 151
+  tests: 179
 
 current_state:
-  phase: UGC 题库系统 + 安全加固 完成
-  status: 稳定，已部署线上，UGC题库系统完成，P0安全问题全部修复
-  last_commit: 1a6442e
+  phase: Main路线阶段0：质量基建 → 身份模型统一 Phase 1
+  status: CI/CD GitHub Actions 已建，身份模型统一 Phase 1（数据库层）完成
+  last_commit: 60dfe0c (待提交新一轮)
   last_deploy: 2026-07-02
   sw_version: v12
-  tests: 151
-  next_milestone: 补 API/架构/安全/测试文档 → 建质量门禁 → 统一身份模型 → 拆分模块
+  tests: 179
+  next_milestone: 身份模型统一 Phase 2（路由层 _resolve_user_id） → Blueprint 拆分 → Repository 拆分
 
 achievements:
   - phase: Phase 1
@@ -84,6 +85,26 @@ achievements:
       P0 安全修复: /api/questions 权限校验 + /api/submit 权限校验 + flagged 持久化
       + answer sanitize + subscribe status 检查 + 登录限流逻辑
       pytest 151 项全通过
+  - phase: Main路线阶段0
+    name: 质量基建（文档/测试/覆盖率）
+    status: done
+    notes: |
+      目标: 建立可安全重构的质量网
+      完成: API/架构/安全/测试文档 + quality_gate.py + agent routing + Agentic SDD v2
+      pytest 152 项全通过，质量门禁 6/6 PASS
+  - phase: Main路线阶段0.5
+    name: CI/CD + 身份模型统一 Phase 1
+    status: done
+    notes: |
+      CI/CD: GitHub Actions (.github/workflows/test.yml) — push/PR 自动运行 pytest + quality_gate
+      身份模型统一 Phase 1（数据库层）:
+        - users 表扩展: role CHECK 支持 'anonymous' + session_uuid 列
+        - session_user_map 表: session_id → user_id 映射
+        - create_anonymous_user(): 幂等创建匿名用户
+        - get_user_id_by_session(): 查询映射
+        - merge_anonymous_to_user(): 登录时数据合并（answer_records/mistakes/favorites）
+        - add_question() bug 修复: INSERT OR IGNORE 跳过时返回已存在题目 ID
+      pytest 179 项全通过，质量门禁 6/6 PASS
 
 decisions:
   - id: D001
@@ -154,3 +175,12 @@ known_issues:
   - issue: database.py 职责过载（表初始化+迁移+CRUD+查询混在一起）
     impact: 中
     workaround: 后续按 Repository 模式拆分
+  - issue: backend/tests 目录不存在
+    impact: 高
+    workaround: 立即创建测试骨架，否则 pytest 无法运行
+  - issue: pyproject.toml coverage fail_under=40 过低
+    impact: 中
+    workaround: 提升至 80% 并配置 pytest-cov
+  - issue: 迁移异常吞问题（_pre_migrate/_post_migrate except:pass）
+    impact: 中
+    workaround: 立即修复，记录日志 + 重新抛出

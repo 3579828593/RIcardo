@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>期末冲刺刷题系统 — 综合评估报告</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --card: #1a1d29;
+  --card-hover: #222636;
+  --border: #2d3142;
+  --text: #e4e6ed;
+  --muted: #8b8fa3;
+  --accent: #6c8cff;
+  --accent-light: rgba(108,140,255,0.12);
+  --green: #4ade80;
+  --green-light: rgba(74,222,128,0.12);
+  --yellow: #fbbf24;
+  --yellow-light: rgba(251,191,36,0.12);
+  --red: #f87171;
+  --red-light: rgba(248,113,113,0.12);
+  --blue: #60a5fa;
+  --blue-light: rgba(96,165,250,0.12);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--text); line-height:1.7; padding:20px; max-width:1100px; margin:0 auto; }
+h1 { font-size:28px; margin-bottom:8px; }
+h2 { font-size:22px; margin:32px 0 16px; padding-bottom:8px; border-bottom:2px solid var(--border); }
+h3 { font-size:17px; margin:20px 0 12px; color:var(--accent); }
+h4 { font-size:15px; margin:16px 0 8px; color:var(--muted); }
+.subtitle { color:var(--muted); font-size:14px; margin-bottom:24px; }
+.card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; transition:background 0.2s; }
+.card:hover { background:var(--card-hover); }
+.score-bar { display:flex; align-items:center; gap:12px; margin:16px 0; }
+.score-label { font-size:14px; min-width:100px; color:var(--muted); }
+.score-track { flex:1; height:8px; background:var(--border); border-radius:4px; overflow:hidden; }
+.score-fill { height:100%; border-radius:4px; transition:width 0.6s; }
+.score-value { font-size:14px; font-weight:bold; min-width:40px; text-align:right; }
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+.badge { display:inline-block; padding:3px 10px; border-radius:4px; font-size:12px; font-weight:bold; }
+.badge-green { background:var(--green-light); color:var(--green); }
+.badge-yellow { background:var(--yellow-light); color:var(--yellow); }
+.badge-red { background:var(--red-light); color:var(--red); }
+.badge-blue { background:var(--blue-light); color:var(--blue); }
+table { width:100%; border-collapse:collapse; margin:12px 0; font-size:13px; }
+th { text-align:left; padding:10px 12px; background:var(--border); color:var(--muted); font-weight:600; }
+td { padding:10px 12px; border-bottom:1px solid var(--border); }
+tr:hover td { background:var(--card-hover); }
+ul { list-style:none; padding-left:0; }
+ul li { padding:6px 0 6px 24px; position:relative; font-size:14px; }
+ul li::before { content:""; position:absolute; left:8px; top:14px; width:6px; height:6px; border-radius:50%; background:var(--accent); }
+ul li.green::before { background:var(--green); }
+ul li.yellow::before { background:var(--yellow); }
+ul li.red::before { background:var(--red); }
+.section-summary { font-size:15px; color:var(--muted); margin-bottom:16px; padding:12px 16px; background:var(--accent-light); border-left:3px solid var(--accent); border-radius:0 8px 8px 0; }
+.priority-box { padding:16px; border-radius:8px; margin:12px 0; }
+.priority-p0 { background:var(--red-light); border:1px solid var(--red); }
+.priority-p1 { background:var(--yellow-light); border:1px solid var(--yellow); }
+.priority-p2 { background:var(--green-light); border:1px solid var(--green); }
+.priority-label { font-size:12px; font-weight:bold; margin-bottom:8px; }
+.priority-p0 .priority-label { color:var(--red); }
+.priority-p1 .priority-label { color:var(--yellow); }
+.priority-p2 .priority-label { color:var(--green); }
+.stat-row { display:flex; gap:24px; flex-wrap:wrap; margin:16px 0; }
+.stat-item { text-align:center; }
+.stat-num { font-size:28px; font-weight:bold; color:var(--accent); }
+.stat-label { font-size:12px; color:var(--muted); margin-top:4px; }
+code { background:var(--border); padding:2px 6px; border-radius:4px; font-size:13px; font-family: Consolas, monospace; }
+.footer { text-align:center; color:var(--muted); font-size:13px; margin-top:40px; padding-top:20px; border-top:1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<h1>期末冲刺刷题系统 — 综合评估报告</h1>
+<p class="subtitle">评估时间：2026-07-02 · 评估范围：文档完整性 / 架构质量 / 工作流优化 · 探索 Agent × 3 并行分析</p>
+
+<!-- ===== 总览 ===== -->
+<h2>一、总览：项目健康度评分</h2>
+<div class="card">
+  <div class="stat-row">
+    <div class="stat-item"><div class="stat-num">351</div><div class="stat-label">题目总数</div></div>
+    <div class="stat-item"><div class="stat-num">151</div><div class="stat-label">测试用例</div></div>
+    <div class="stat-item"><div class="stat-num">32</div><div class="stat-label">API 端点</div></div>
+    <div class="stat-item"><div class="stat-num">30+</div><div class="stat-label">Git 提交</div></div>
+    <div class="stat-item"><div class="stat-num">11</div><div class="stat-label">数据库表</div></div>
+    <div class="stat-item"><div class="stat-num">13</div><div class="stat-label">文档文件</div></div>
+  </div>
+  <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+  <div class="score-bar">
+    <span class="score-label">文档完整性</span>
+    <div class="score-track"><div class="score-fill" style="width:78%;background:var(--green)"></div></div>
+    <span class="score-value">78/100</span>
+  </div>
+  <div class="score-bar">
+    <span class="score-label">架构质量</span>
+    <div class="score-track"><div class="score-fill" style="width:62%;background:var(--yellow)"></div></div>
+    <span class="score-value">62/100</span>
+  </div>
+  <div class="score-bar">
+    <span class="score-label">工作流成熟度</span>
+    <div class="score-track"><div class="score-fill" style="width:70%;background:var(--blue)"></div></div>
+    <span class="score-value">70/100</span>
+  </div>
+  <div class="score-bar">
+    <span class="score-label">测试覆盖</span>
+    <div class="score-track"><div class="score-fill" style="width:65%;background:var(--yellow)"></div></div>
+    <span class="score-value">65/100</span>
+  </div>
+  <div class="score-bar">
+    <span class="score-label">安全防护</span>
+    <div class="score-track"><div class="score-fill" style="width:82%;background:var(--green)"></div></div>
+    <span class="score-value">82/100</span>
+  </div>
+</div>
+
+<div class="section-summary">
+  <strong>核心判断：</strong>项目文档体系相当完善（SDD 三层文档 + ADR + 路线图），但存在明显的架构债务（双身份模型、胖控制器）和工作流断层（SOLO 基础设施未落地到本项目）。需要一轮针对性的架构打磨，而非推倒重来。
+</div>
+
+<!-- ===== 文档评估 ===== -->
+<h2>二、文档与设计完整性评估</h2>
+
+<h3>2.1 已有文档资产</h3>
+<div class="card">
+  <table>
+    <tr><th>分类</th><th>文件</th><th>质量</th><th>说明</th></tr>
+    <tr><td>产品路线图</td><td><code>docs/roadmap-2026-summer.md</code></td><td><span class="badge badge-green">完整</span></td><td>8 周 4 阶段规划，含验收标准、技术债务、风险应对</td></tr>
+    <tr><td>项目宪法</td><td><code>.spec/CONSTITUTION.md</code></td><td><span class="badge badge-green">完整</span></td><td>技术栈约束、5 条架构约束、数据流图、代码风格、禁止事项</td></tr>
+    <tr><td>SDD 工作流</td><td><code>docs/workflow-design.md</code></td><td><span class="badge badge-green">完整</span></td><td>7 步开发循环、跨会话接力协议、任务编排矩阵</td></tr>
+    <tr><td>UGC 设计文档</td><td><code>docs/superpowers/specs/...design.md</code></td><td><span class="badge badge-green">完整</span></td><td>4 步渐进实施、完整 SQL/API/权限/安全设计</td></tr>
+    <tr><td>功能 SPEC</td><td><code>.spec/specs/phase1-2-*.md</code></td><td><span class="badge badge-green">完整</span></td><td>3 份阶段 SPEC，含验收标准和文件变更清单</td></tr>
+    <tr><td>审查清单</td><td><code>.spec/reviews/*.md</code></td><td><span class="badge badge-green">完整</span></td><td>3 份阶段审查，57 项测试全通过记录</td></tr>
+    <tr><td>架构决策</td><td><code>memory-bank/decisions.md</code></td><td><span class="badge badge-green">完整</span></td><td>6 条 ADR，含决策背景和取舍理由</td></tr>
+    <tr><td>代码审查</td><td><code>UGC题库系统_最终代码审查报告.md</code></td><td><span class="badge badge-green">完整</span></td><td>1 Critical + 4 Important + 5 Minor，含修复建议</td></tr>
+    <tr><td>部署技能</td><td><code>.trae/skills/pythonanywhere-deploy/</code></td><td><span class="badge badge-green">完整</span></td><td>5 步智能部署工作流 + 故障排除表</td></tr>
+    <tr><td>进度快照</td><td><code>memory-bank/progress.yaml</code></td><td><span class="badge badge-yellow">需更新</span></td><td>记录为 77 项测试，实际已 151 项</td></tr>
+  </table>
+</div>
+
+<h3>2.2 缺失的文档</h3>
+<div class="card">
+  <ul>
+    <li class="red"><strong>无独立 API 参考文档</strong> — 32 个端点散落在 SPEC 和设计文档中，无统一的 OpenAPI/Swagger 规范</li>
+    <li class="red"><strong>无系统架构图</strong> — 有文字描述和数据流图，但缺少可视化部署拓扑图</li>
+    <li class="yellow"><strong>无测试策略文档</strong> — 测试信息散落各 SPEC/REVIEW，无统一覆盖率报告</li>
+    <li class="yellow"><strong>progress.yaml 过期</strong> — 记录 77 项测试，实际 151 项，UGC 功能未反映</li>
+    <li class="yellow"><strong>无运维手册</strong> — 部署流程在 SKILL.md 中，但无日常运维/故障处理手册</li>
+  </ul>
+</div>
+
+<!-- ===== 架构评估 ===== -->
+<h2>三、架构质量评估</h2>
+
+<h3>3.1 架构优势</h3>
+<div class="card">
+  <ul>
+    <li class="green"><strong>安全措施到位</strong> — CSRF 保护、pbkdf2_sha256 密码哈希（30 万次迭代）、参数化查询、安全响应头、限流、<code>compare_digest</code> 防时序攻击</li>
+    <li class="green"><strong>ADR 决策记录完整</strong> — 6 条架构决策含背景和取舍理由（Vue CDN vs SPA、Session 隔离、SW 策略等）</li>
+    <li class="green"><strong>多端部署支持</strong> — PythonAnywhere / Render / Docker / 桌面 exe 四套部署方案</li>
+    <li class="green"><strong>测试覆盖面广</strong> — 11 个测试模块 + 1 个 E2E，涵盖 API/认证/权限/迁移/CSV/前端</li>
+    <li class="green"><strong>PWA 离线支持</strong> — Service Worker StaleWhileRevalidate 策略，离线可答题</li>
+  </ul>
+</div>
+
+<h3>3.2 架构债务（按严重程度排序）</h3>
+
+<div class="priority-box priority-p0">
+  <div class="priority-label">P0 — 严重（影响可维护性和安全性）</div>
+  <ul>
+    <li class="red"><strong>双身份模型代码爆炸</strong> — 匿名 session_id + 登录 user_id 并存，几乎所有数据层方法都有 <code>if user_id: ... else: ...</code> 双分支，代码量翻倍。<code>get_stats</code> 方法 60 行 4 分支极度臃肿。渗透到 <code>record_answer</code>、<code>get_mistakes</code>、<code>get_favorites</code>、<code>toggle_favorite</code> 等所有核心方法。</li>
+    <li class="red"><strong>app.py 胖控制器（781 行）</strong> — 32 个路由 + 业务逻辑 + 判分 + 权限 + 会话管理混于一处，未使用 Flask Blueprint 拆分。</li>
+    <li class="red"><strong>database.py 过载（884 行）</strong> — Schema + 4 步迁移 + 全部 CRUD 在一个类中，11 张表的所有操作集中一处。</li>
+  </ul>
+</div>
+
+<div class="priority-box priority-p1">
+  <div class="priority-label">P1 — 中等（应近期修复）</div>
+  <ul>
+    <li class="yellow"><strong>前后端判分逻辑重复</strong> — <code>app.js:checkAnswerLocally</code> 与 <code>app.py:_check_answer</code> 两套实现，存在不一致风险</li>
+    <li class="yellow"><strong>双重管理员机制</strong> — <code>require_admin</code>（令牌鉴权）与 <code>role='admin'</code>（角色鉴权）两套独立体系并存</li>
+    <li class="yellow"><strong>迁移静默吞异常</strong> — <code>_pre_migrate</code>/<code>_post_migrate</code> 的 <code>except: pass</code> 会掩盖迁移失败</li>
+    <li class="yellow"><strong>权限检查不一致</strong> — 部分路由用 <code>_check_bank_access</code> 辅助函数，部分直接调 <code>can_read_bank</code></li>
+    <li class="yellow"><strong>无测试覆盖率配置</strong> — 无 pytest.ini / .coveragerc / pyproject.toml，无法量化覆盖率</li>
+  </ul>
+</div>
+
+<div class="priority-box priority-p2">
+  <div class="priority-label">P2 — 轻微（技术债务清单）</div>
+  <ul>
+    <li class="green"><code>config.yaml</code> 与 <code>DEFAULT_CONFIG</code> 完全重复，YAML 无增量价值</li>
+    <li class="green"><code>secret_key</code> 随机回退无启动警告，生产环境忘记配置会导致 session 频繁失效</li>
+    <li class="green"><code>exam_sessions</code> 表已定义但无任何 CRUD 方法（死代码）</li>
+    <li class="green">CSP 允许 <code>unsafe-eval</code>（Vue CDN 模式所需，已知取舍）</li>
+    <li class="green">根目录存在 <code>index.html</code>、<code>sw.js</code> 等与 <code>backend/</code> 下重复的冗余文件</li>
+    <li class="green"><code>import</code> 位置违反 PEP8（<code>from permissions import</code> 在 app.py 第 591 行）</li>
+  </ul>
+</div>
+
+<h3>3.3 文件规模热力图</h3>
+<div class="card">
+  <table>
+    <tr><th>文件</th><th>行数</th><th>职责数</th><th>风险等级</th><th>建议</th></tr>
+    <tr><td><code>app.py</code></td><td>781</td><td>5（路由/业务/判分/权限/会话）</td><td><span class="badge badge-red">高</span></td><td>拆分为 Blueprint + Service 层</td></tr>
+    <tr><td><code>database.py</code></td><td>884</td><td>3（Schema/迁移/CRUD）</td><td><span class="badge badge-red">高</span></td><td>拆分为 Repository + Migration</td></tr>
+    <tr><td><code>app.js</code></td><td>1438</td><td>8（刷题/管理/认证/题库/复习/离线/快捷键/连击）</td><td><span class="badge badge-yellow">中</span></td><td>Vue CDN 限制，ADR-001 已记录取舍</td></tr>
+    <tr><td><code>index.html</code></td><td>1601</td><td>2（CSS 860 行 + 模板 740 行）</td><td><span class="badge badge-yellow">中</span></td><td>CSS 外置为独立文件</td></tr>
+    <tr><td><code>auth.py</code></td><td>88</td><td>1</td><td><span class="badge badge-green">低</span></td><td>无需调整</td></tr>
+    <tr><td><code>permissions.py</code></td><td>68</td><td>1</td><td><span class="badge badge-green">低</span></td><td>无需调整</td></tr>
+  </table>
+</div>
+
+<!-- ===== 工作流评估 ===== -->
+<h2>四、工作流评估与优化建议</h2>
+
+<h3>4.1 当前工作流：SDD 规格驱动开发</h3>
+<div class="card">
+  <p style="margin-bottom:12px;">项目采用自研 SDD 工作流，形成 <strong>CONSTITUTION → SPEC → REVIEW → progress → decisions</strong> 三层文档 + 状态管理体系：</p>
+  <ul>
+    <li class="green"><strong>7 步开发循环</strong>：读上下文 → 写 SPEC → 实现 → 测试 → 自检 → 提交部署 → 更新进度</li>
+    <li class="green"><strong>跨会话接力协议</strong>：memory-bank/progress.yaml + decisions.md 保持上下文连续性</li>
+    <li class="green"><strong>任务编排矩阵</strong>：需求分析/架构/前端/后端/审查/部署 各自对应技能与 Agent</li>
+    <li class="green"><strong>部署自动化</strong>：pythonanywhere-deploy 技能实现 5 步智能部署</li>
+  </ul>
+</div>
+
+<h3>4.2 工作流断层与缺失</h3>
+<div class="card">
+  <table>
+    <tr><th>检查项</th><th>状态</th><th>影响</th></tr>
+    <tr><td>.trae/ 路由表</td><td><span class="badge badge-red">不存在</span></td><td>无技能自动路由，依赖手动判断</td></tr>
+    <tr><td>frontend-routing.md</td><td><span class="badge badge-red">不存在</span></td><td>前端任务无编排入口</td></tr>
+    <tr><td>quality-guard 模块</td><td><span class="badge badge-red">不存在</span></td><td>无编码扫描/金标准测试/预部署检查</td></tr>
+    <tr><td>pytest 覆盖率配置</td><td><span class="badge badge-red">不存在</span></td><td>无法量化测试覆盖率</td></tr>
+    <tr><td>CI/CD 流水线</td><td><span class="badge badge-red">不存在</span></td><td>无自动化测试/部署触发</td></tr>
+    <tr><td>SDD SPEC 模板</td><td><span class="badge badge-green">存在</span></td><td>有标准化模板</td></tr>
+    <tr><td>部署技能</td><td><span class="badge badge-green">存在</span></td><td>pythonanywhere-deploy 完善</td></tr>
+    <tr><td>进度跟踪</td><td><span class="badge badge-yellow">过期</span></td><td>progress.yaml 未同步最新状态</td></tr>
+  </table>
+</div>
+
+<h3>4.3 工作流优化建议</h3>
+<div class="card">
+  <h4>短期（1-2 天可完成）</h4>
+  <ul>
+    <li class="green"><strong>更新 progress.yaml</strong> — 同步 151 项测试、UGC 功能完成状态、当前架构债务清单</li>
+    <li class="green"><strong>添加 pytest 覆盖率配置</strong> — 创建 <code>pyproject.toml</code>，启用 pytest-cov，设定最低覆盖率阈值</li>
+    <li class="green"><strong>创建 API 参考文档</strong> — 将 32 个端点整理为统一 Markdown 表格或 OpenAPI 规范</li>
+  </ul>
+  <h4>中期（1-2 周）</h4>
+  <ul>
+    <li class="yellow"><strong>评估是否引入 SOLO 路由</strong> — 当前 SDD 工作流已能运转，SOLO 路由表可作为增强而非替代。建议先在 <code>.trae/</code> 下创建 <code>routing.md</code> 定义技能触发规则</li>
+    <li class="yellow"><strong>引入质量门禁</strong> — 创建 pre-commit 检查脚本（编码扫描 + 语法检查 + 测试运行），而非依赖人工记忆</li>
+    <li class="yellow"><strong>统一身份模型</strong> — 消除 session_id / user_id 双分支，匿名用户自动创建临时 user 记录</li>
+  </ul>
+  <h4>长期（路线图对齐）</h4>
+  <ul>
+    <li><strong>app.py 拆 Blueprint</strong> — 按功能域拆分为 routes/quiz.py、routes/auth.py、routes/banks.py、routes/admin.py</li>
+    <li><strong>database.py 拆 Repository</strong> — 按领域分模块：QuestionRepository、BankRepository、UserRepository</li>
+    <li><strong>抽取判分逻辑</strong> — 创建独立 grading.py 模块，前后端共用</li>
+    <li><strong>CI/CD 流水线</strong> — GitHub Actions：push → 自动测试 → 覆盖率检查 → 部署到 PythonAnywhere</li>
+  </ul>
+</div>
+
+<!-- ===== 行动计划 ===== -->
+<h2>五、智能任务编排：下一步行动计划</h2>
+
+<div class="card">
+<h3>5.1 推荐优先级矩阵</h3>
+<table>
+  <tr><th>优先级</th><th>任务</th><th>预估工时</th><th>依赖</th><th>技能/Agent</th></tr>
+  <tr><td><span class="badge badge-red">P0</span></td><td>更新 progress.yaml 同步真实状态</td><td>30 min</td><td>无</td><td>直接编辑</td></tr>
+  <tr><td><span class="badge badge-red">P0</span></td><td>创建 pyproject.toml + pytest-cov 配置</td><td>1 h</td><td>无</td><td>直接编辑</td></tr>
+  <tr><td><span class="badge badge-red">P0</span></td><td>创建 API 参考文档（32 端点）</td><td>2 h</td><td>无</td><td>Explore + 文档生成</td></tr>
+  <tr><td><span class="badge badge-yellow">P1</span></td><td>修复迁移 except:pass 静默吞异常</td><td>1 h</td><td>无</td><td>systematic-debugging</td></tr>
+  <tr><td><span class="badge badge-yellow">P1</span></td><td>抽取判分逻辑为 grading.py</td><td>3 h</td><td>无</td><td>test-driven-development</td></tr>
+  <tr><td><span class="badge badge-yellow">P1</span></td><td>统一权限检查模式（_check_bank_access 全覆盖）</td><td>2 h</td><td>无</td><td>systematic-debugging</td></tr>
+  <tr><td><span class="badge badge-yellow">P1</span></td><td>清理根目录冗余文件</td><td>30 min</td><td>无</td><td>直接操作</td></tr>
+  <tr><td><span class="badge badge-green">P2</span></td><td>统一身份模型（消除双分支）</td><td>2-3 天</td><td>P1 完成</td><td>sdd-workflow + TDD</td></tr>
+  <tr><td><span class="badge badge-green">P2</span></td><td>app.py 拆 Blueprint</td><td>2 天</td><td>身份模型统一</td><td>sdd-workflow + TDD</td></tr>
+  <tr><td><span class="badge badge-green">P2</span></td><td>database.py 拆 Repository</td><td>2 天</td><td>身份模型统一</td><td>sdd-workflow + TDD</td></tr>
+  <tr><td><span class="badge badge-green">P2</span></td><td>评估 SOLO 路由引入</td><td>1 天</td><td>无</td><td>brainstorming</td></tr>
+</table>
+</div>
+
+<h3>5.2 推荐执行顺序</h3>
+<div class="card">
+  <p style="margin-bottom:12px;"><strong>阶段 A：快速修补（1 天）</strong> — 更新文档 + 添加覆盖率配置 + 创建 API 文档 + 修复迁移异常</p>
+  <p style="margin-bottom:12px;"><strong>阶段 B：架构打磨（1 周）</strong> — 抽取判分逻辑 + 统一权限检查 + 统一身份模型</p>
+  <p style="margin-bottom:12px;"><strong>阶段 C：结构重构（2 周）</strong> — app.py 拆 Blueprint + database.py 拆 Repository + CSS 外置</p>
+  <p><strong>阶段 D：工作流升级（持续）</strong> — 评估 SOLO 路由 + 质量门禁 + CI/CD</p>
+</div>
+
+<!-- ===== 结论 ===== -->
+<h2>六、结论</h2>
+<div class="card">
+  <div class="section-summary">
+    <strong>回答用户的三个核心问题：</strong>
+  </div>
+  <h3>Q1: 我们有完整的开发文档和设计吗？</h3>
+  <p style="margin-bottom:16px;">
+    <span class="badge badge-green">基本完整，但有缺口</span>
+    项目拥有路线图、宪法、SDD 工作流、UGC 设计文档、6 条 ADR、代码审查报告、部署技能 — 文档体系在个人项目中已属优秀。但缺少独立 API 参考文档、系统架构图、测试覆盖率配置，且 progress.yaml 已过期。
+  </p>
+  <h3>Q2: 现在的推进和设计是否需要打磨？</h3>
+  <p style="margin-bottom:16px;">
+    <span class="badge badge-yellow">需要针对性打磨</span>
+    核心架构债务是<strong>双身份模型</strong>（session_id + user_id）导致的代码重复，渗透到数据层每个方法。app.py（781 行）和 database.py（884 行）两个大文件承载过多职责。建议按 P0→P1→P2 优先级逐步打磨，而非推倒重来。
+  </p>
+  <h3>Q3: 工作流是否需要优化和设计？</h3>
+  <p>
+    <span class="badge badge-blue">SDD 可用，SOLO 可选增强</span>
+    SDD 工作流（SPEC→实现→REVIEW）已能支撑开发，但缺少自动化质量门禁（编码扫描、覆盖率检查、预部署验证）。SOLO 路由表和 quality-guard 模块在记忆中记录已建，但<strong>未落地到本项目</strong>。建议先补质量门禁，再评估是否引入 SOLO 路由。
+  </p>
+</div>
+
+<div class="footer">
+  期末冲刺刷题系统 · 综合评估报告 · 2026-07-02<br>
+  探索 Agent × 3 并行分析 · 文档/架构/工作流全维度覆盖
+</div>
+
+</body>
+</html>
